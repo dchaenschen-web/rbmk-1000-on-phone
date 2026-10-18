@@ -263,7 +263,8 @@ class MainActivity : Activity() {
             val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
                 putExtra(
                     WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                    ComponentName(this, ReactorWallpaperService::class.java)
+                    // 注意：这里在 Intent.apply {} 内部，this 是 Intent 而不是 Activity
+                    ComponentName(this@MainActivity, ReactorWallpaperService::class.java)
                 )
             }
             startActivity(intent)

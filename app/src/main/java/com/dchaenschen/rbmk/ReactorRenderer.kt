@@ -131,7 +131,9 @@ class ReactorRenderer {
             quad(canvas, a, b, c, d, top)
 
             // 中心帽盖
-            val p = rods.project(rod.x, rod.z, hh + .01f, w, h, angle, tilt, zoom)
+            val p = rods.project(
+                rod.x.toFloat(), rod.z.toFloat(), hh + .01f, w, h, angle, tilt, zoom
+            )
             val s = rods.scale(w, h, zoom)
             paint.color = Color.parseColor("#5a636b")
             canvas.drawOval(
