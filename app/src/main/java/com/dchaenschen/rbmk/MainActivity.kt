@@ -1,6 +1,7 @@
 package com.dchaenschen.rbmk
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
@@ -40,6 +41,14 @@ class MainActivity : Activity() {
         private const val REQ_PROJECTION = 1001
         private const val REQ_BACKGROUND = 1002
     }
+
+    /** 调色面板中的一个颜色槽 */
+    private data class ColorSlot(
+        val key: String,
+        val name: String,
+        val get: () -> Int,
+        val set: (Int) -> Unit,
+    )
 
     private lateinit var prefs: SharedPreferences
     private lateinit var statusText: TextView
@@ -317,6 +326,65 @@ class MainActivity : Activity() {
         )
         root.addView(spacer(dp(10)))
 
+        // ---------------- 调色 ----------------
+        root.addView(label("配色 · 点色块调整", 14f, Color.parseColor("#c9d1c9")))
+
+        val colorSlots = listOf(
+            ColorSlot("color_primary", "顶面主色", { ReactorState.colorPrimary }) {
+                ReactorState.colorPrimary = it
+            },
+            ColorSlot("color_accent_a", "点缀色 A（红棕）", { ReactorState.colorAccentA }) {
+                ReactorState.colorAccentA = it
+            },
+            ColorSlot("color_accent_b", "点缀色 B（蓝绿）", { ReactorState.colorAccentB }) {
+                ReactorState.colorAccentB = it
+            },
+            ColorSlot("color_side", "侧面", { ReactorState.colorSide }) {
+                ReactorState.colorSide = it
+            },
+            ColorSlot("color_cap", "顶盖", { ReactorState.colorCap }) {
+                ReactorState.colorCap = it
+            },
+            ColorSlot("color_highlight", "高光", { ReactorState.colorHighlight }) {
+                ReactorState.colorHighlight = it
+            },
+            ColorSlot("color_ring", "外圈", { ReactorState.colorRing }) {
+                ReactorState.colorRing = it
+            },
+        )
+
+        for (slot in colorSlots) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(
+                label(slot.name, 13f, Color.parseColor("#c9d1c9")),
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            val swatch = Button(this).apply {
+                text = ""
+                isAllCaps = false
+                setBackgroundColor(slot.get())
+            }
+            swatch.setOnClickListener {
+                pickColor(slot.name, slot.get()) { picked ->
+                    slot.set(picked)
+                    swatch.setBackgroundColor(picked)
+                    ReactorConfig.saveColor(this@MainActivity, slot.key, picked)
+                }
+            }
+            row.addView(
+                swatch,
+                LinearLayout.LayoutParams(dp(72), dp(42)).apply { topMargin = dp(4) }
+            )
+            root.addView(row)
+        }
+
+        root.addView(button("恢复默认配色") {
+            ReactorState.resetColors()
+            ReactorConfig.saveAllColors(this)
+            recreate()
+        })
+        root.addView(spacer(dp(14)))
+
         val sw = Switch(this).apply {
             text = "显示歌名"
             textSize = 15f
@@ -473,6 +541,57 @@ class MainActivity : Activity() {
         }
         box.addView(sb)
         return box
+    }
+
+    /**
+     * 简易 HSV 取色器：色相 / 饱和度 / 明度 三个滑杆 + 实时预览块。
+     * 不引第三方库，保持零依赖。
+     */
+    private fun pickColor(title: String, initial: Int, onPicked: (Int) -> Unit) {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(initial, hsv)
+
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(14), dp(20), dp(4))
+        }
+
+        val previewSwatch = View(this).apply { setBackgroundColor(initial) }
+        box.addView(
+            previewSwatch,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56))
+        )
+
+        fun addSlider(name: String, max: Int, init: Float, apply: (Float) -> Unit) {
+            val tv = label("$name：${init.toInt()}", 12f, Color.parseColor("#c9d1c9"))
+            box.addView(tv)
+            val seek = SeekBar(this).apply {
+                this.max = max
+                progress = init.toInt().coerceIn(0, max)
+            }
+            seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                    tv.text = "$name：$p"
+                    apply(p.toFloat())
+                    previewSwatch.setBackgroundColor(Color.HSVToColor(hsv))
+                }
+
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+            box.addView(seek)
+        }
+
+        addSlider("色相", 360, hsv[0]) { hsv[0] = it }
+        addSlider("饱和度", 100, hsv[1] * 100f) { hsv[1] = it / 100f }
+        addSlider("明度", 100, hsv[2] * 100f) { hsv[2] = it / 100f }
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(box)
+            .setPositiveButton("确定") { _, _ -> onPicked(Color.HSVToColor(hsv)) }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()

@@ -133,6 +133,53 @@ object ReactorState {
     @Volatile
     var forceIdle: Boolean = false
 
+    // ---------------------------------------------------------------- 配色
+    // 默认值 = 金属配色方案（移植自桌面版并做过调整）
+
+    /** 顶面主色（多数控制棒） */
+    @Volatile
+    var colorPrimary: Int = 0xFF9AA4AE.toInt()
+
+    /** 点缀色 A：红棕 */
+    @Volatile
+    var colorAccentA: Int = 0xFF8F6D51.toInt()
+
+    /** 点缀色 B：蓝绿 */
+    @Volatile
+    var colorAccentB: Int = 0xFF617668.toInt()
+
+    /** 侧面基色 */
+    @Volatile
+    var colorSide: Int = 0xFF4E565E.toInt()
+
+    /** 顶盖中心色 */
+    @Volatile
+    var colorCap: Int = 0xFF5A636B.toInt()
+
+    /** 高光点颜色 */
+    @Volatile
+    var colorHighlight: Int = 0xFFEEF2F6.toInt()
+
+    /** 外圈装饰环颜色 */
+    @Volatile
+    var colorRing: Int = 0xFF505948.toInt()
+
+    /** 点缀色占全部控制棒的比例（0 = 全是主色，1 = 全是点缀色） */
+    @Volatile
+    var accentRatio: Float = 0.15f
+
+    /** 配色默认值备份，供「恢复默认配色」使用 */
+    fun resetColors() {
+        colorPrimary = 0xFF9AA4AE.toInt()
+        colorAccentA = 0xFF8F6D51.toInt()
+        colorAccentB = 0xFF617668.toInt()
+        colorSide = 0xFF4E565E.toInt()
+        colorCap = 0xFF5A636B.toInt()
+        colorHighlight = 0xFFEEF2F6.toInt()
+        colorRing = 0xFF505948.toInt()
+        accentRatio = 0.15f
+    }
+
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true
@@ -187,6 +234,8 @@ object ReactorState {
             hint = "低于该频率不参与分析（Hz）"),
         Param("freq_high", "频谱上限", 2000f, 16000f, 16000f, digits = 0,
             hint = "高于该频率不参与分析（Hz）"),
+        Param("accent_ratio", "点缀比例", 0f, 0.8f, 0.15f,
+            hint = "红棕/蓝绿点缀色占全部控制棒的比例"),
     )
 
     /** 把某个参数写入内存 */
@@ -227,6 +276,7 @@ object ReactorState {
         "low_shelf" -> lowShelf
         "freq_low" -> fmin
         "freq_high" -> fmax
+        "accent_ratio" -> accentRatio
         else -> 0f
     }
 }

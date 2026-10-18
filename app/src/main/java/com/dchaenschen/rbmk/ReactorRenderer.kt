@@ -11,12 +11,11 @@ import kotlin.math.sin
 /**
  * 把 RodArray 画到 Canvas 上。
  *
- * 配色是桌面版的「金属色」方案：
- *   顶面按 seed 分三档 —— 红棕 / 蓝绿 / 金属银（红棕与蓝绿保持原样）
- *   侧面与顶盖用钢灰系
- *   外圈是原版的装饰环
+ * 配色全部来自 ReactorState，可在设置页里用取色器随意调整：
+ *   顶面主色 / 点缀色 A（红棕）/ 点缀色 B（蓝绿）/ 侧面 / 顶盖 / 高光 / 外圈
+ * 触发点缀色的控制棒比例由 ReactorState.accentRatio 决定。
  *
- * 所有视角与强度参数都从 ReactorState 读，可在设置界面实时调整。
+ * 所有视角与强度参数也都从 ReactorState 读，可在设置界面实时调整。
  */
 class ReactorRenderer {
 
@@ -64,6 +63,24 @@ class ReactorRenderer {
         if (ReactorState.showTitle) drawTitle(canvas, width, height)
     }
 
+    // ---------------------------------------------------------------- 颜色工具
+    /** 整体明暗缩放 */
+    private fun shade(c: Int, f: Float): Int = Color.rgb(
+        (Color.red(c) * f).toInt().coerceIn(0, 255),
+        (Color.green(c) * f).toInt().coerceIn(0, 255),
+        (Color.blue(c) * f).toInt().coerceIn(0, 255)
+    )
+
+    /** 向白色提亮 amount（0..1） */
+    private fun lift(c: Int, amount: Float): Int {
+        val a = amount.coerceIn(0f, 1f)
+        return Color.rgb(
+            (Color.red(c) + (255 - Color.red(c)) * a).toInt().coerceIn(0, 255),
+            (Color.green(c) + (255 - Color.green(c)) * a).toInt().coerceIn(0, 255),
+            (Color.blue(c) + (255 - Color.blue(c)) * a).toInt().coerceIn(0, 255)
+        )
+    }
+
     // ---------------------------------------------------------------- 外圈
     private fun drawRings(
         canvas: Canvas, w: Float, h: Float,
@@ -71,15 +88,15 @@ class ReactorRenderer {
     ) {
         val unit = rods.scale(w, h, zoom) / 15f
 
-        strokePaint.color = Color.parseColor("#060b07")
+        strokePaint.color = shade(ReactorState.colorRing, 0.18f)
         strokePaint.strokeWidth = (20f * unit).coerceAtLeast(2f)
         circle(canvas, 16.4f, w, h, angle, tilt, zoom)
 
-        strokePaint.color = Color.parseColor("#505948")
+        strokePaint.color = ReactorState.colorRing
         strokePaint.strokeWidth = 2f
         circle(canvas, 16.5f, w, h, angle, tilt, zoom)
 
-        strokePaint.color = Color.parseColor("#878969")
+        strokePaint.color = lift(ReactorState.colorRing, 0.25f)
         strokePaint.strokeWidth = 1f
         circle(canvas, 16f, w, h, angle, tilt, zoom)
     }
@@ -111,6 +128,22 @@ class ReactorRenderer {
         val baseH = ReactorState.baseHeight
         val maxH = ReactorState.maxHeight.coerceAtLeast(0.1f)
 
+        // ---- 每帧取一次配色，避免每根棒重复计算 ----
+        val sideBase = ReactorState.colorSide
+        val sideLit = lift(shade(sideBase, 1.0f), 0.16f)
+        val sideDark = shade(sideBase, 0.72f)
+        val sideMid = shade(sideBase, 0.86f)
+        val capColor = ReactorState.colorCap
+        val hiColor = ReactorState.colorHighlight
+        val topBase = ReactorState.colorPrimary
+        val accentA = ReactorState.colorAccentA
+        val accentB = ReactorState.colorAccentB
+
+        // 点缀阈值：比例越大，越多控制棒被换成点缀色
+        val ratio = ReactorState.accentRatio.coerceIn(0f, 0.95f)
+        val thrA = 1f - ratio
+        val thrB = 1f - ratio * 0.5f
+
         for (rod in sorted) {
             val hh = rod.h
             val a = rods.project(rod.x - .44f, rod.z - .44f, hh, w, h, angle, tilt, zoom)
@@ -125,47 +158,31 @@ class ReactorRenderer {
             // 用当前高度反推振幅，做侧面亮度变化
             val amp = ((hh - baseH) / maxH).coerceIn(0f, 1f)
 
-            quad(canvas, a, a0, b0, b, Color.parseColor("#4e565e"))
-            quad(
-                canvas, b, b0, c0, c,
-                Color.rgb(
-                    72 + (amp * 34).toInt(),
-                    78 + (amp * 34).toInt(),
-                    86 + (amp * 34).toInt()
-                )
-            )
-            quad(canvas, c, c0, d0, d, Color.parseColor("#3b434b"))
-            quad(canvas, d, d0, a0, a, Color.parseColor("#454d55"))
+            quad(canvas, a, a0, b0, b, sideBase)
+            quad(canvas, b, b0, c0, c, lift(sideLit, amp * 0.18f))
+            quad(canvas, c, c0, d0, d, sideDark)
+            quad(canvas, d, d0, a0, a, sideMid)
 
-            // 顶面：保留红棕 / 蓝绿两档，其余金属银
-            val base: IntArray = when {
-                rod.seed > .92f -> intArrayOf(143, 109, 81)
-                rod.seed > .85f -> intArrayOf(97, 118, 104)
-                else -> intArrayOf(
-                    150 + (rod.seed * 38).toInt(),
-                    157 + (rod.seed * 38).toInt(),
-                    166 + (rod.seed * 38).toInt(),
-                )
+            // 顶面主色，按 seed 做轻微明暗纹理
+            val top = when {
+                rod.seed > thrA -> accentA
+                rod.seed > thrB -> accentB
+                else -> shade(topBase, 0.88f + rod.seed * 0.24f)
             }
-            val top = Color.rgb(
-                (base[0] + amp * 43).toInt().coerceIn(0, 255),
-                (base[1] + amp * 40).toInt().coerceIn(0, 255),
-                (base[2] + amp * 24).toInt().coerceIn(0, 255),
-            )
-            quad(canvas, a, b, c, d, top)
+            quad(canvas, a, b, c, d, lift(top, amp * 0.16f))
 
             // 中心帽盖
             val p = rods.project(
                 rod.x.toFloat(), rod.z.toFloat(), hh + .01f, w, h, angle, tilt, zoom
             )
             val s = rods.scale(w, h, zoom)
-            paint.color = Color.parseColor("#5a636b")
+            paint.color = capColor
             canvas.drawOval(
                 p[0] - s * .12f, p[1] - s * .12f * tilt,
                 p[0] + s * .12f, p[1] + s * .12f * tilt, paint
             )
             if (s > 13 && rod.seed > .6f) {
-                paint.color = Color.parseColor("#eef2f6")
+                paint.color = hiColor
                 canvas.drawRect(
                     p[0] - s * .3f, p[1] - s * .19f,
                     p[0] - s * .3f + 1.5f, p[1] - s * .19f + 1.5f, paint
