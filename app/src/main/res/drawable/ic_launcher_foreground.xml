@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标前景：三根高低不同的控制棒 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#dded84"
+        android:pathData="M34,74 L34,52 L42,52 L42,74 Z" />
+    <path
+        android:fillColor="#b4dc6e"
+        android:pathData="M50,74 L50,34 L58,34 L58,74 Z" />
+    <path
+        android:fillColor="#dded84"
+        android:pathData="M66,74 L66,58 L74,58 L74,74 Z" />
+</vector>
