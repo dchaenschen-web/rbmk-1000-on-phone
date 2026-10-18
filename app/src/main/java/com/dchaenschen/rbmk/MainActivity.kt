@@ -205,6 +205,77 @@ class MainActivity : Activity() {
         root.addView(debugText)
         root.addView(spacer(dp(14)))
 
+        // ---------------- 无音乐时的律动模式 ----------------
+        root.addView(label("无音乐时的律动模式", 14f, Color.parseColor("#c9d1c9")))
+
+        val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val modeButtons = mutableListOf<Button>()
+        val modeKeys = listOf(
+            ReactorState.IDLE_OFF to "关闭",
+            ReactorState.IDLE_WAVE to "波浪",
+            ReactorState.IDLE_BREATH to "呼吸",
+            ReactorState.IDLE_PULSE to "脉冲",
+            ReactorState.IDLE_CHAOS to "失控"
+        )
+        val refreshModes: () -> Unit = {
+            modeButtons.forEachIndexed { i, b ->
+                val on = modeKeys[i].first == ReactorState.idleMode
+                b.setTextColor(
+                    if (on) Color.parseColor("#0a0d0b") else Color.parseColor("#c9d1c9")
+                )
+                b.setBackgroundColor(
+                    if (on) Color.parseColor("#dded84") else Color.parseColor("#1a201c")
+                )
+            }
+        }
+        for ((key, name) in modeKeys) {
+            val b = Button(this).apply {
+                text = name
+                textSize = 12f
+                isAllCaps = false
+                setOnClickListener {
+                    ReactorState.idleMode = key
+                    prefs.edit().putString("idle_mode", key).apply()
+                    refreshModes()
+                }
+            }
+            modeRow.addView(
+                b,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            modeButtons.add(b)
+        }
+        root.addView(modeRow)
+        refreshModes()
+
+        root.addView(
+            hint(
+                "仅在无音乐时生效。\n" +
+                        "波浪：从中心向外扩散的柔和波纹\n" +
+                        "呼吸：整场缓慢同步起伏\n" +
+                        "脉冲：快速向外扫过的同心波\n" +
+                        "失控：每根棒独立无规律抖动 + 偶发爆发（模拟反应堆失控）"
+            )
+        )
+
+        val forceSw = Switch(this).apply {
+            text = "强制演示（忽略音频，只用律动模式）"
+            textSize = 14f
+            setTextColor(Color.parseColor("#c9d1c9"))
+            isChecked = ReactorState.forceIdle
+            setOnCheckedChangeListener { _, checked ->
+                ReactorState.forceIdle = checked
+                prefs.edit().putBoolean("force_idle", checked).apply()
+            }
+        }
+        root.addView(
+            forceSw, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        )
+        root.addView(spacer(dp(14)))
+
         // ---------------- 参数 ----------------
         root.addView(label("参数 · 调整后立刻生效", 14f, Color.parseColor("#c9d1c9")))
         for (p in ReactorState.PARAMS) {

@@ -116,6 +116,23 @@ object ReactorState {
     @Volatile
     var dbgAvgAmp: Float = 0f
 
+    // ---------------------------------------------------------------- 律动模式
+    /**
+     * 没有音乐（或强制演示）时的律动模式。
+     *
+     * off    关闭 —— 控制棒回落到基础高度，完全静止
+     * wave   波浪 —— 从中心向外扩散的柔和波纹（默认）
+     * breath 呼吸 —— 整场缓慢同步起伏
+     * pulse  脉冲 —— 快速向外扫过的同心波
+     * chaos  失控 —— 模拟反应堆失控：无规律抖动 + 偶发爆发
+     */
+    @Volatile
+    var idleMode: String = IDLE_WAVE
+
+    /** 强制用律动模式替代音频驱动（方便在预览里对比各模式） */
+    @Volatile
+    var forceIdle: Boolean = false
+
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true
@@ -127,6 +144,12 @@ object ReactorState {
      * MIC    = 麦克风（不需要授权弹窗、不会被系统回收，但戴耳机时听不到）
      * NONE   = 不采集，用待机波动
      */
+    const val IDLE_OFF = "off"
+    const val IDLE_WAVE = "wave"
+    const val IDLE_BREATH = "breath"
+    const val IDLE_PULSE = "pulse"
+    const val IDLE_CHAOS = "chaos"
+
     const val SOURCE_SYSTEM = "system"
     const val SOURCE_MIC = "mic"
     const val SOURCE_NONE = "none"

@@ -20,5 +20,8 @@ object ReactorConfig {
             ReactorState.apply(p.key, prefs.getFloat(p.key, p.def))
         }
         ReactorState.showTitle = prefs.getBoolean("show_title", true)
+        ReactorState.idleMode = prefs.getString("idle_mode", ReactorState.IDLE_WAVE)
+            ?: ReactorState.IDLE_WAVE
+        ReactorState.forceIdle = prefs.getBoolean("force_idle", false)
     }
 }

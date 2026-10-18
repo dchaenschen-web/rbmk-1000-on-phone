@@ -88,14 +88,14 @@ class RodArray {
         val k = (1.0 - (0.45 + smoothing * 0.53).pow(dtScale.toDouble()))
             .toFloat().coerceIn(0.01f, 0.95f)
 
-        // 没有音频（静音，或采集已停止/失效）时用温和的待机波动，
-        // 否则画面完全静止，看起来像卡死。
-        if (peak < 0.05f) {
-            for (rod in rods) {
-                val wave = sin(rod.r * 0.55f - timeMs * 0.0009f + rod.x * 0.25f)
-                val target = baseH + (0.10f + 0.10f * wave) * maxH * 0.5f
-                rod.h += (target - rod.h) * k
-            }
+        // 没有音频（静音 / 采集停止），或用户勾了「强制演示」时，
+        // 交给所选律动模式驱动。
+        val useIdle = ReactorState.forceIdle || peak < 0.05f
+        if (useIdle) {
+            ReactorState.dbgPeak = peak
+            ReactorState.dbgAgc = agcPeak
+            ReactorState.dbgAvgAmp = 0f
+            stepIdle(timeMs, baseH, maxH, k)
             return
         }
 
@@ -117,6 +117,71 @@ class RodArray {
         ReactorState.dbgPeak = peak
         ReactorState.dbgAgc = agcPeak
         ReactorState.dbgAvgAmp = ampSum / rods.size
+    }
+
+    /**
+     * 无音频时的律动驱动。
+     *
+     * off    回落并静止
+     * wave   波纹（默认）
+     * breath 整场同步呼吸
+     * pulse  快速向外扫过的同心脉冲
+     * chaos  失控：每根棒独立无规律抖动 + 全局偶发爆发
+     */
+    private fun stepIdle(timeMs: Long, baseH: Float, maxH: Float, k: Float) {
+        val t = timeMs * 0.001f
+        when (ReactorState.idleMode) {
+            ReactorState.IDLE_OFF -> {
+                for (rod in rods) {
+                    rod.h += (baseH - rod.h) * k
+                }
+            }
+
+            ReactorState.IDLE_BREATH -> {
+                val v = (sin(t * 0.8f) * 0.5f + 0.5f).toFloat()
+                for (rod in rods) {
+                    // 每根棒相位略有差异，避免完全呆板
+                    val jitter = 0.94f + 0.06f * sin(rod.x * 0.4f + rod.z * 0.3f)
+                    val target = baseH + v * maxH * 0.45f * jitter
+                    rod.h += (target - rod.h) * (k * 0.6f)
+                }
+            }
+
+            ReactorState.IDLE_PULSE -> {
+                for (rod in rods) {
+                    val phase = rod.r * 0.55f - t * 3.2f
+                    val v = (sin(phase) * 0.5f + 0.5f).toFloat()
+                    val target = baseH + v.pow(2.2f) * maxH * 0.65f
+                    rod.h += (target - rod.h) * (k * 1.4f).coerceAtMost(0.6f)
+                }
+            }
+
+            ReactorState.IDLE_CHAOS -> {
+                // 全局潮汐 + 偶发爆发，模拟反应堆失控的节奏
+                val tide = (sin(t * 0.73f) * 0.5f + 0.5f).toFloat()
+                val burst = (sin(t * 0.31f + 1.3f) * 0.5f + 0.5f).toFloat().pow(7f)
+                for (rod in rods) {
+                    // 每根棒独立的无规律抖动
+                    val n = (
+                            sin(t * (2.1f + rod.seed * 6.3f) + rod.x * 0.9f + rod.z * 0.5f)
+                                    * 0.5f + 0.5f
+                            ).toFloat()
+                    val v = (n * 0.55f + tide * 0.22f + burst * 0.5f).coerceIn(0f, 1f)
+                    val target = baseH + v * maxH * (0.30f + burst * 0.75f)
+                    // 响应更快，显得更急躁
+                    rod.h += (target - rod.h) * (k * 2.2f).coerceAtMost(0.55f)
+                }
+            }
+
+            else -> {
+                // IDLE_WAVE
+                for (rod in rods) {
+                    val wave = sin(rod.r * 0.55f - timeMs * 0.0009f + rod.x * 0.25f)
+                    val target = baseH + (0.10f + 0.10f * wave) * maxH * 0.5f
+                    rod.h += (target - rod.h) * k
+                }
+            }
+        }
     }
 
     /** 屏幕空间缩放系数 */
