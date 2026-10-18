@@ -122,13 +122,9 @@ class MainActivity : Activity() {
         root.addView(spacer(dp(16)))
 
         // ============ 1. 音频来源 ============
-        root.addView(sectionTitle("1. 音频来源（三选一）"))
+        root.addView(sectionTitle("1. 系统音频采集"))
         projectionBtn = button("系统音频 · 精确（需一次录屏授权）") { requestProjection() }
         root.addView(projectionBtn)
-        root.addView(button("麦克风 · 稳定（无需授权弹窗）") {
-            AudioCaptureService.startMic(this)
-            Toast.makeText(this, "已切换到麦克风采集", Toast.LENGTH_SHORT).show()
-        })
         root.addView(button("停止采集") {
             AudioCaptureService.stop(this)
             ReactorState.audioSource = ReactorState.SOURCE_NONE
@@ -136,10 +132,10 @@ class MainActivity : Activity() {
         })
         root.addView(
             hint(
-                "系统音频：精确捕捉本机播放的音乐。Android 把它绑在 MediaProjection 上，" +
-                        "所以会弹「录制或投射屏幕」授权框（本应用只用音频通道，不读取画面）。\n" +
-                        "麦克风：不需要授权弹窗，也不会被系统中途回收；外放效果好，" +
-                        "戴耳机/蓝牙时听不到。"
+                "Android 把「采集本机播放的音频」绑在 MediaProjection 上，" +
+                        "所以会弹「录制或投射屏幕」授权框。\n" +
+                        "本应用只使用其中的音频通道：不读取画面、不录屏、不保存、不上传。\n" +
+                        "授权是会话级的：手机重启或进程被杀之后需要重新点一次授权。"
             )
         )
         root.addView(button("允许后台运行（防被杀）") { requestBatteryExemption() })
@@ -281,11 +277,8 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------- 状态
     private fun refreshStatus() {
         val parts = mutableListOf<String>()
-        val srcName = when (ReactorState.audioSource) {
-            ReactorState.SOURCE_SYSTEM -> "系统音频"
-            ReactorState.SOURCE_MIC -> "麦克风"
-            else -> "未采集"
-        }
+        val srcName =
+            if (ReactorState.audioSource == ReactorState.SOURCE_SYSTEM) "系统音频" else "未采集"
         parts += if (AudioCaptureService.running) "采集：$srcName" else "采集：未开启"
         parts += if (hasNotificationAccess()) "歌名读取：已授权" else "歌名读取：未授权"
         val err = AudioCaptureService.lastError
