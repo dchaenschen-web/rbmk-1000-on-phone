@@ -52,8 +52,8 @@ class RodArray {
         if (bins.isEmpty()) return 0f
         // 网页版：hz = 45 * 320^(r/15)
         val hz = 45.0 * 320.0.pow(rod.r / 15.0)
-        val t = ((ln(hz) - ln(ReactorState.FMIN)) /
-                (ln(ReactorState.FMAX) - ln(ReactorState.FMIN))).toFloat()
+        val t = ((ln(hz) - ln(ReactorState.fmin.toDouble())) /
+                (ln(ReactorState.fmax.toDouble()) - ln(ReactorState.fmin.toDouble()))).toFloat()
         val pos = (t * (bins.size - 1)).coerceIn(0f, (bins.size - 1).toFloat())
         val i0 = pos.toInt()
         val i1 = (i0 + 1).coerceAtMost(bins.size - 1)

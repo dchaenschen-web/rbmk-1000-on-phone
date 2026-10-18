@@ -10,8 +10,15 @@ object ReactorState {
 
     // ---- 常量（必须声明在使用它们的属性之前）----
     const val BINS = 256
-    const val FMIN = 20.0
-    const val FMAX = 16000.0
+    const val FMIN_DEFAULT = 20.0
+    const val FMAX_DEFAULT = 16000.0
+
+    /** 频谱分析范围（Hz），可由用户在设置里调整 */
+    @Volatile
+    var fmin: Float = FMIN_DEFAULT.toFloat()
+
+    @Volatile
+    var fmax: Float = FMAX_DEFAULT.toFloat()
 
     /** 256 段对数频谱，值域 0f..1f。由 AudioCaptureService 持续更新。 */
     @Volatile
@@ -76,6 +83,16 @@ object ReactorState {
     @Volatile
     var offsetY: Float = 0f
 
+    // ---------------------------------------------------------------- 频率调控
+    /** 频率倾斜：每个倍频程提升/衰减多少 dB（以 1kHz 为基准）。
+     *  正值强调高频，负值强调低频。 */
+    @Volatile
+    var freqTilt: Float = 3f
+
+    /** 低频搁架：对 250Hz 以下再额外增减多少 dB（线性过渡到 250Hz）。 */
+    @Volatile
+    var lowShelf: Float = 0f
+
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true
@@ -117,6 +134,14 @@ object ReactorState {
         Param("zoom", "缩放", 0.5f, 2f, 1f, hint = "阵列在屏幕上的大小"),
         Param("offset_x", "水平位置", -0.5f, 0.5f, 0f, hint = "整体左右平移（占屏宽比例）"),
         Param("offset_y", "垂直位置", -0.5f, 0.5f, 0f, hint = "整体上下平移（占屏高比例）"),
+        Param("freq_tilt", "频率倾斜", -6f, 12f, 3f, digits = 1,
+            hint = "每个倍频程升降多少 dB。调大=更强调高频，负值=更强调低频"),
+        Param("low_shelf", "低频增减", -12f, 12f, 0f, digits = 1,
+            hint = "对 250Hz 以下单独增减 dB。中间一直顶满时调成负值"),
+        Param("freq_low", "频谱下限", 20f, 400f, 20f, digits = 0,
+            hint = "低于该频率不参与分析（Hz）"),
+        Param("freq_high", "频谱上限", 2000f, 16000f, 16000f, digits = 0,
+            hint = "高于该频率不参与分析（Hz）"),
     )
 
     /** 把某个参数写入内存 */
@@ -133,6 +158,10 @@ object ReactorState {
             "zoom" -> zoom = value
             "offset_x" -> offsetX = value
             "offset_y" -> offsetY = value
+            "freq_tilt" -> freqTilt = value
+            "low_shelf" -> lowShelf = value
+            "freq_low" -> fmin = value
+            "freq_high" -> fmax = value
         }
     }
 
@@ -149,6 +178,10 @@ object ReactorState {
         "zoom" -> zoom
         "offset_x" -> offsetX
         "offset_y" -> offsetY
+        "freq_tilt" -> freqTilt
+        "low_shelf" -> lowShelf
+        "freq_low" -> fmin
+        "freq_high" -> fmax
         else -> 0f
     }
 }

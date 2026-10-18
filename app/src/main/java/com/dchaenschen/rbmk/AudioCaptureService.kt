@@ -273,6 +273,9 @@ class AudioCaptureService : Service() {
         var errorStreak = 0
 
         while (!stopped) {
+            // 用户改了频率参数就重算频段表（比较很便宜）
+            ensureBands()
+
             val rec = record
             if (rec == null) break
 
@@ -364,21 +367,51 @@ class AudioCaptureService : Service() {
         }
     }
 
+    // 参数缓存：用户改了频率参数才重算频段表
+    private var cachedTilt = Float.NaN
+    private var cachedShelf = Float.NaN
+    private var cachedLow = Float.NaN
+    private var cachedHigh = Float.NaN
+
+    /** 频率参数变化时重算频段划分与增益 */
+    private fun ensureBands() {
+        if (cachedTilt == ReactorState.freqTilt &&
+            cachedShelf == ReactorState.lowShelf &&
+            cachedLow == ReactorState.fmin &&
+            cachedHigh == ReactorState.fmax
+        ) {
+            return
+        }
+        cachedTilt = ReactorState.freqTilt
+        cachedShelf = ReactorState.lowShelf
+        cachedLow = ReactorState.fmin
+        cachedHigh = ReactorState.fmax
+        precomputeBands()
+    }
+
     private fun precomputeBands() {
         val freqsPerBin = sampleRate.toDouble() / fftSize
         val half = fftSize / 2
+        val low = ReactorState.fmin.toDouble().coerceIn(20.0, 1000.0)
+        val high = ReactorState.fmax.toDouble().coerceIn(low * 4.0, 20000.0)
+        val tilt = ReactorState.freqTilt.toDouble()
+        val shelf = ReactorState.lowShelf.toDouble()
+
         for (b in 0 until binCount) {
-            val f0 = ReactorState.FMIN *
-                    (ReactorState.FMAX / ReactorState.FMIN).pow(b.toDouble() / binCount)
-            val f1 = ReactorState.FMIN *
-                    (ReactorState.FMAX / ReactorState.FMIN).pow((b + 1).toDouble() / binCount)
+            val f0 = low * (high / low).pow(b.toDouble() / binCount)
+            val f1 = low * (high / low).pow((b + 1).toDouble() / binCount)
             bandLo[b] = (f0 / freqsPerBin).toInt().coerceIn(1, half - 1)
             bandHi[b] = (f1 / freqsPerBin).toInt().coerceIn(bandLo[b] + 1, half)
 
-            // 频率倾斜：幅度 ∝ sqrt(f/1000) 即 +3dB/oct，
-            // 让中高频不至于被低频完全压住。限制在 0.25x ~ 3x。
             val fc = sqrt(f0 * f1)
-            bandGain[b] = (fc / 1000.0).pow(0.5).coerceIn(0.25, 3.0).toFloat()
+            // 倾斜：以 1kHz 为基准，dB = tilt * log2(fc / 1000)
+            var gainDb = tilt * (kotlin.math.ln(fc / 1000.0) / kotlin.math.ln(2.0))
+            // 低频搁架：250Hz 以下线性叠加，约 20Hz 处取满值
+            if (fc < 250.0) {
+                val w = ((250.0 - fc) / 230.0).coerceIn(0.0, 1.0)
+                gainDb += shelf * w
+            }
+            bandGain[b] = 10.0.pow(gainDb / 20.0).coerceIn(0.02, 12.0).toFloat()
         }
     }
 
