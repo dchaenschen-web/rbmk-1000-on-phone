@@ -3,8 +3,7 @@
 以切尔诺贝利反应堆控制棒阵列为原型的 **Android 动态壁纸**。
 709 根控制棒随**本机正在播放的音乐**起伏，可显示当前歌曲名。
 
-> 本项目是 [Reactor Audio Visualizer](https://github.com/wzk112/reactor-audio-visualizer)
-> （作者 Andy Wang，MIT 许可证）的 Android 移植衍生作品。
+> 本项目是 [Reactor Audio Visualizer](https://github.com/wzk112/reactor-audio-visualizer)的 Android 移植衍生作品。
 > 控制棒的几何与等距投影算法移植自原项目，详见 [LICENSE](LICENSE)。
 
 ## 功能
