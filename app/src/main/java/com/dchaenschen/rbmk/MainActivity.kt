@@ -372,7 +372,7 @@ class MainActivity : Activity() {
 
         if (requestCode == REQ_PROJECTION) {
             if (resultCode == RESULT_OK && data != null) {
-                AudioCaptureService.startSystem(this, resultCode, data)
+                AudioCaptureService.start(this, resultCode, data)
                 Toast.makeText(this, "开始采集系统音频", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "已取消授权", Toast.LENGTH_SHORT).show()
