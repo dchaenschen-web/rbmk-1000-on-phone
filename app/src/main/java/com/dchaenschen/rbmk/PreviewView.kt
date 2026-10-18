@@ -46,6 +46,33 @@ class PreviewView(context: Context) : View(context) {
         reloadBackground()
     }
 
+    /** 目标屏幕的宽高比（height / width） */
+    private fun targetRatio(): Float {
+        return if (ReactorState.previewAspect == ReactorState.ASPECT_INNER) {
+            val dm = resources.displayMetrics
+            if (dm.widthPixels > 0) {
+                dm.heightPixels.toFloat() / dm.widthPixels.toFloat()
+            } else 1.6f
+        } else {
+            // Z Flip6 外屏 720 x 748
+            748f / 720f
+        }
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val availW = MeasureSpec.getSize(widthMeasureSpec)
+        val ratio = targetRatio()
+        var w = availW
+        var h = (w * ratio).toInt()
+        // 竖屏比例下会很高，限制到 320dp 高度后按比例缩窄
+        val maxH = (320 * resources.displayMetrics.density).toInt()
+        if (h > maxH) {
+            h = maxH
+            w = (h / ratio).toInt()
+        }
+        setMeasuredDimension(w, h)
+    }
+
     /** 重新读取 SharedPreferences 里的背景图（用户选完图后调用） */
     fun reloadBackground() {
         val prefs = context.getSharedPreferences("reactor", Context.MODE_PRIVATE)

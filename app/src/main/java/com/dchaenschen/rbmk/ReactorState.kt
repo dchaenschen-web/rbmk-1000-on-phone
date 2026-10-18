@@ -93,6 +93,21 @@ object ReactorState {
     @Volatile
     var lowShelf: Float = 0f
 
+    /**
+     * 预览使用的屏幕比例。
+     *
+     * 渲染公式依赖画布长宽比（scale = min(w/45, h/37)，垂直锚点 h*0.55），
+     * 所以预览必须用和目标屏幕**完全相同的比例**，否则调出来的位置/大小
+     * 和壁纸实际效果对不上。
+     *
+     * outer = Z Flip 外屏 720x748
+     * inner = 当前设备屏幕（内屏）
+     */
+    @Volatile
+    var previewAspect: String = "outer"
+    const val ASPECT_OUTER = "outer"
+    const val ASPECT_INNER = "inner"
+
     // ---- 调试读数（设置页展示，用于确认参数是否生效）----
     @Volatile
     var dbgPeak: Float = 0f

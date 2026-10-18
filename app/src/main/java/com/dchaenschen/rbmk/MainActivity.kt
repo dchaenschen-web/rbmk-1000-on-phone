@@ -130,12 +130,47 @@ class MainActivity : Activity() {
         val preview = PreviewView(this)
         previewView = preview
         preview.onChanged = { saveGeometry() }
-        root.addView(
-            preview, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(260)
+
+        // 用 FrameLayout 居中：预览必须保持目标屏幕的长宽比，
+        // 所以它的宽度可能小于屏幕宽度（竖屏比例时会缩窄）。
+        val previewFrame = android.widget.FrameLayout(this)
+        previewFrame.addView(
+            preview,
+            android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.CENTER_HORIZONTAL
             )
         )
-        root.addView(hint("单指拖动 = 移动位置　双指捏合 = 缩放。调整立刻保存并作用到壁纸。"))
+        root.addView(
+            previewFrame, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(button("切换预览比例（外屏 720×748 / 内屏）") {
+            ReactorState.previewAspect =
+                if (ReactorState.previewAspect == ReactorState.ASPECT_OUTER)
+                    ReactorState.ASPECT_INNER
+                else
+                    ReactorState.ASPECT_OUTER
+            preview.requestLayout()
+            Toast.makeText(
+                this,
+                if (ReactorState.previewAspect == ReactorState.ASPECT_OUTER)
+                    "预览比例：外屏 720×748" else "预览比例：内屏",
+                Toast.LENGTH_SHORT
+            ).show()
+        })
+
+        root.addView(
+            hint(
+                "单指拖动 = 移动位置　双指捏合 = 缩放。\n" +
+                "预览按目标屏幕的比例绘制（可用上面的按钮切换内屏/外屏），" +
+                "所以这里调出来的位置和大小会与壁纸一致。"
+            )
+        )
         root.addView(button("重置位置和大小") {
             ReactorState.offsetX = 0f
             ReactorState.offsetY = 0f
