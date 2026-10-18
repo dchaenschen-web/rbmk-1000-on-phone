@@ -17,6 +17,7 @@ import android.os.IBinder
 import kotlin.math.cos
 import kotlin.math.log10
 import kotlin.math.pow
+import kotlin.math.sqrt
 
 /**
  * 用 AudioPlaybackCapture 采集「本机正在播放的声音」并实时算频谱。
@@ -26,19 +27,17 @@ import kotlin.math.pow
  * 为什么必须经过 MediaProjection
  * -------------------------------
  * Android 把「采集本机播放的音频」绑定在 MediaProjection（媒体投射）接口上，
- * 系统的授权框统一写成「录制或投射屏幕」。本应用只使用其中的**音频通道**，
+ * 系统的授权框统一写成「录制或投射屏幕」。本应用只使用其中的音频通道，
  * 不读取画面、不录屏、不保存、不上传。
- * 普通应用没有别的办法拿系统音频（CAPTURE_AUDIO_OUTPUT 是系统签名权限）。
  *
- * 踩过的坑
- * --------
- * 1. 启动顺序：Android 14 对「先 getMediaProjection 还是先 startForeground」在不同
- *    机型上要求不一致，有的机型先启动 mediaProjection 类型的前台服务会抛
- *    SecurityException（表现为应用停止运行），有的反过来会失败。
- *    这里两种顺序都试，哪个成功用哪个。
- * 2. read 出错后必须重建：AudioRecord.read 返回负值说明录音器已损坏，
- *    只 sleep 救不回来，必须重建。
- * 3. 所有异常都兜住并写进 lastError，避免整个应用崩掉。
+ * 频谱处理的三个关键修正
+ * ----------------------
+ * 1. 频率倾斜（+3dB/oct）：音乐能量天然集中在低频，中低频一直很强、高频很弱。
+ *    按 1kHz 为基准做倾斜补偿，让中高频也能有可见变化。
+ * 2. 每频段自适应地板：低频常有持续能量（底鼓/贝斯），会让中心区域永远顶满。
+ *    对每个频段单独维护「地板」（快速下探、缓慢回升），输出时减掉地板，
+ *    相当于谱减去稳态成分，只保留变化量。
+ * 3. 时间平滑放在最后，渲染层再叠一次用户可调的平滑度。
  */
 class AudioCaptureService : Service() {
 
@@ -88,6 +87,7 @@ class AudioCaptureService : Service() {
 
     private val bandLo = IntArray(binCount)
     private val bandHi = IntArray(binCount)
+    private val bandGain = FloatArray(binCount)
 
     override fun onCreate() {
         super.onCreate()
@@ -267,6 +267,9 @@ class AudioCaptureService : Service() {
         val pcm = ShortArray(fftSize)
         val smoothed = FloatArray(binCount)
 
+        // 每频段自适应地板：快速下探、缓慢回升，用来压掉稳态能量
+        val bandFloor = FloatArray(binCount)
+
         var errorStreak = 0
 
         while (!stopped) {
@@ -309,11 +312,24 @@ class AudioCaptureService : Service() {
                 var sum = 0f
                 for (k in lo until hi.coerceAtMost(mag.size)) sum += mag[k]
                 val avg = sum / (hi - lo).coerceAtLeast(1)
-                // 宽区间归一化（-100..0dB），动态范围压缩交给渲染层 AGC
-                val db = 20.0 * log10(avg + 1e-9)
-                out[b] = ((db + 100.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
+
+                // 1) dB 化 + 频率倾斜补偿（+3dB/oct，以 1kHz 为基准）
+                val db = 20.0 * log10(avg + 1e-9) + 20.0 * log10(bandGain[b].toDouble())
+
+                // 2) 粗归一化到 0..1（宽区间，保留动态范围）
+                val raw = ((db + 100.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
+
+                // 3) 每频段自适应地板（谱减稳态成分）
+                if (raw < bandFloor[b]) {
+                    bandFloor[b] = bandFloor[b] * 0.55f + raw * 0.45f
+                } else {
+                    bandFloor[b] = (bandFloor[b] + 0.0022f).coerceAtMost(0.85f)
+                }
+                val denom = (1f - bandFloor[b]).coerceAtLeast(0.15f)
+                out[b] = ((raw - bandFloor[b]) / denom).coerceIn(0f, 1f)
             }
 
+            // 4) 轻平滑，避免逐帧跳变（用户可调的平滑度在渲染层再叠一次）
             for (b in 0 until binCount) {
                 smoothed[b] = smoothed[b] * 0.35f + out[b] * 0.65f
             }
@@ -358,6 +374,11 @@ class AudioCaptureService : Service() {
                     (ReactorState.FMAX / ReactorState.FMIN).pow((b + 1).toDouble() / binCount)
             bandLo[b] = (f0 / freqsPerBin).toInt().coerceIn(1, half - 1)
             bandHi[b] = (f1 / freqsPerBin).toInt().coerceIn(bandLo[b] + 1, half)
+
+            // 频率倾斜：幅度 ∝ sqrt(f/1000) 即 +3dB/oct，
+            // 让中高频不至于被低频完全压住。限制在 0.25x ~ 3x。
+            val fc = sqrt(f0 * f1)
+            bandGain[b] = (fc / 1000.0).pow(0.5).coerceIn(0.25, 3.0).toFloat()
         }
     }
 

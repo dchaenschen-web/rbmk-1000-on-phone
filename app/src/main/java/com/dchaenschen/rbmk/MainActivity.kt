@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var projectionBtn: Button
     private lateinit var notifBtn: Button
+    private var previewView: PreviewView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,6 +106,7 @@ class MainActivity : Activity() {
         // ============ 预览：调整位置和大小 ============
         root.addView(sectionTitle("预览 · 调整位置和大小"))
         val preview = PreviewView(this)
+        previewView = preview
         preview.onChanged = { saveGeometry() }
         root.addView(
             preview, LinearLayout.LayoutParams(
@@ -155,6 +157,7 @@ class MainActivity : Activity() {
         root.addView(button("选择背景图（可选）") { pickBackground() })
         root.addView(button("清除背景图") {
             prefs.edit().putString("background_uri", "").apply()
+            previewView?.reloadBackground()
             Toast.makeText(this, "已清除，壁纸会变纯黑底", Toast.LENGTH_SHORT).show()
         })
         root.addView(button("还原为普通壁纸") { restoreStaticWallpaper() })
@@ -391,7 +394,12 @@ class MainActivity : Activity() {
                 } catch (_: Exception) {
                 }
                 prefs.edit().putString("background_uri", uri.toString()).apply()
-                Toast.makeText(this, "背景图已设置，重新应用壁纸后生效", Toast.LENGTH_LONG).show()
+                previewView?.reloadBackground()
+                Toast.makeText(
+                    this,
+                    "背景图已设置。预览已更新，壁纸需重新点「设为动态壁纸」才生效",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

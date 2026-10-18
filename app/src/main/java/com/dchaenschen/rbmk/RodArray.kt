@@ -31,6 +31,9 @@ class RodArray {
         var h: Float = 0f
     }
 
+    /** AGC 峰值包络（快升慢降） */
+    private var agcPeak: Float = 0.06f
+
     val rods: List<Rod> = buildList {
         for (x in -15..15) {
             for (z in -15..15) {
@@ -70,8 +73,16 @@ class RodArray {
         // AGC：以本帧峰值为参考，保证频谱始终铺满动态范围
         var peak = 0f
         for (b in bins) if (b > peak) peak = b
-        if (peak < 0.05f) peak = 0.05f
-        val span = (peak - floor).coerceAtLeast(0.05f)
+
+        // AGC 用「峰值包络」而不是当帧峰值：快升慢降。
+        // 用当帧峰值的话，任何一帧里最响的那个频段都会被归一化成 1.0，
+        // 于是它永远顶满、其他频段被压在低处 —— 这就是「中间一直最高」的成因之一。
+        if (peak > agcPeak) {
+            agcPeak = peak
+        } else {
+            agcPeak = (agcPeak * 0.985f).coerceAtLeast(0.06f)
+        }
+        val span = (agcPeak - floor).coerceAtLeast(0.06f)
 
         // 每帧只算一次的平滑系数
         val k = (1.0 - (0.45 + smoothing * 0.53).pow(dtScale.toDouble()))
