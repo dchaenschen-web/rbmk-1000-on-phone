@@ -56,6 +56,7 @@ class MainActivity : Activity() {
     private lateinit var notifBtn: Button
     private var previewView: PreviewView? = null
     private var debugText: TextView? = null
+    private var sizeInfoText: TextView? = null
     private val uiHandler = Handler(Looper.getMainLooper())
     private val debugTicker = object : Runnable {
         override fun run() {
@@ -67,6 +68,16 @@ class MainActivity : Activity() {
                     ReactorState.dbgAvgAmp,
                     ReactorState.sensitivity
                 )
+            }
+            val si = sizeInfoText
+            if (si != null) {
+                val ww = ReactorState.wallpaperWidth
+                val wh = ReactorState.wallpaperHeight
+                si.text = if (ww > 0 && wh > 0) {
+                    "按真实壁纸画布 ${ww}×${wh} 显示，与系统壁纸预览一致"
+                } else {
+                    "尚未获取真实画布尺寸（壁纸还没运行过），当前用估算比例"
+                }
             }
             uiHandler.postDelayed(this, 400)
         }
@@ -157,10 +168,12 @@ class MainActivity : Activity() {
         // ---------------- 预览 ----------------
         root.addView(
             label(
-                "预览 · 单指拖动改位置，双指捏合改大小",
+                "位置与大小 · 单指拖动改位置，双指捏合改大小",
                 14f, Color.parseColor("#c9d1c9")
             )
         )
+        sizeInfoText = label("", 11f, Color.parseColor("#6b7568"))
+        root.addView(sizeInfoText)
         val preview = PreviewView(this)
         previewView = preview
         preview.onChanged = { saveGeometry() }
@@ -183,7 +196,7 @@ class MainActivity : Activity() {
             )
         )
 
-        root.addView(button("切换预览比例（外屏 720×748 / 内屏）") {
+        root.addView(button("切换估算比例（仅在未获取真实尺寸时生效）") {
             ReactorState.previewAspect =
                 if (ReactorState.previewAspect == ReactorState.ASPECT_OUTER)
                     ReactorState.ASPECT_INNER
@@ -230,6 +243,29 @@ class MainActivity : Activity() {
         root.addView(spacer(dp(14)))
 
         // ---------------- 无音乐时的律动模式 ----------------
+        root.addView(
+            label("运动预览 · 只演示律动，不参与位置和大小", 14f, Color.parseColor("#c9d1c9"))
+        )
+
+        // 运动预览：忽略位置与缩放，只用来挑律动模式
+        val motionPreview = PreviewView(this).apply {
+            geometryEditing = false
+        }
+        val motionFrame = android.widget.FrameLayout(this)
+        motionFrame.addView(
+            motionPreview,
+            android.widget.FrameLayout.LayoutParams(
+                dp(160), dp(160), android.view.Gravity.CENTER_HORIZONTAL
+            )
+        )
+        root.addView(
+            motionFrame, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        root.addView(spacer(dp(8)))
+
         root.addView(label("无音乐时的律动模式", 14f, Color.parseColor("#c9d1c9")))
 
         val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }

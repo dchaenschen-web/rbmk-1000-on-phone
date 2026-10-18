@@ -49,6 +49,9 @@ object ReactorConfig {
         ReactorState.colorGroup4 = prefs.getInt("color_group4", DEF_GROUP4)
         ReactorState.colorGroup5 = prefs.getInt("color_group5", DEF_GROUP5)
 
+        ReactorState.wallpaperWidth = prefs.getInt("wallpaper_w", 0)
+        ReactorState.wallpaperHeight = prefs.getInt("wallpaper_h", 0)
+
         // 分组设置
         ReactorState.groupMode = prefs.getString(
             "group_mode", ReactorState.GROUP_RANDOM
@@ -61,6 +64,14 @@ object ReactorConfig {
     fun saveColor(context: Context, key: String, color: Int) {
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             .edit().putInt(key, color).apply()
+    }
+
+    /** 保存壁纸真实画布尺寸 */
+    fun saveWallpaperSize(context: Context, width: Int, height: Int) {
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+            .putInt("wallpaper_w", width)
+            .putInt("wallpaper_h", height)
+            .apply()
     }
 
     /** 保存分组设置 */

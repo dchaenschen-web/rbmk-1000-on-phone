@@ -35,8 +35,19 @@ class ReactorRenderer {
 
     private var lastFrameNanos = 0L
 
-    /** 每帧调用 */
-    fun draw(canvas: Canvas, width: Float, height: Float, nowNanos: Long) {
+    /**
+     * 每帧调用。
+     *
+     * @param useGeometry true  = 应用位置/缩放（位置与大小预览、壁纸本体）
+     *                    false = 只演示动画，忽略 offset 与 zoom（运动预览）
+     */
+    fun draw(
+        canvas: Canvas,
+        width: Float,
+        height: Float,
+        nowNanos: Long,
+        useGeometry: Boolean = true,
+    ) {
         val dt = if (lastFrameNanos == 0L) 1f else
             ((nowNanos - lastFrameNanos) / 16_666_667f).coerceIn(0.2f, 3f)
         lastFrameNanos = nowNanos
@@ -49,14 +60,16 @@ class ReactorRenderer {
 
         val angle = Math.toRadians(ReactorState.angleDeg.toDouble()).toFloat()
         val tilt = ReactorState.tilt
-        val zoom = ReactorState.zoom
+        val zoom = if (useGeometry) ReactorState.zoom else 1f
 
         // 阵列整体平移放到画布变换里，这样歌名浮层不受影响
         canvas.save()
-        canvas.translate(
-            width * ReactorState.offsetX,
-            height * ReactorState.offsetY
-        )
+        if (useGeometry) {
+            canvas.translate(
+                width * ReactorState.offsetX,
+                height * ReactorState.offsetY
+            )
+        }
         drawRings(canvas, width, height, angle, tilt, zoom)
         drawRods(canvas, width, height, angle, tilt, zoom)
         canvas.restore()

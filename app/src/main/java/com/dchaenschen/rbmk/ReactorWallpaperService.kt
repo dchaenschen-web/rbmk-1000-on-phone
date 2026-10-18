@@ -51,6 +51,25 @@ class ReactorWallpaperService : WallpaperService() {
             }
         }
 
+        override fun onSurfaceChanged(
+            holder: SurfaceHolder?,
+            format: Int,
+            width: Int,
+            height: Int,
+        ) {
+            super.onSurfaceChanged(holder, format, width, height)
+            if (width > 0 && height > 0) {
+                ReactorState.wallpaperWidth = width
+                ReactorState.wallpaperHeight = height
+                try {
+                    ReactorConfig.saveWallpaperSize(
+                        this@ReactorWallpaperService, width, height
+                    )
+                } catch (_: Exception) {
+                }
+            }
+        }
+
         override fun onVisibilityChanged(isVisible: Boolean) {
             visible = isVisible
             if (isVisible) startLoop() else stopLoop()

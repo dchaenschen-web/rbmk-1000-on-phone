@@ -47,7 +47,22 @@ class PreviewView(context: Context) : View(context) {
     }
 
     /** 目标屏幕的宽高比（height / width） */
+    /** 是否参与位置/大小编辑；false 时只演示动画 */
+    var geometryEditing: Boolean = true
+
+    /**
+     * 目标屏幕宽高比（height / width）。
+     *
+     * 优先级：
+     *   1. 壁纸引擎上报的**真实画布尺寸** —— 和系统壁纸选择器的预览一致
+     *   2. 用户手动选择的估算比例（外屏 720×748 / 内屏）
+     */
     private fun targetRatio(): Float {
+        val ww = ReactorState.wallpaperWidth
+        val wh = ReactorState.wallpaperHeight
+        if (ww > 0 && wh > 0) {
+            return wh.toFloat() / ww.toFloat()
+        }
         return if (ReactorState.previewAspect == ReactorState.ASPECT_INNER) {
             val dm = resources.displayMetrics
             if (dm.widthPixels > 0) {
@@ -113,7 +128,10 @@ class PreviewView(context: Context) : View(context) {
             }
         }
 
-        renderer.draw(canvas, width.toFloat(), height.toFloat(), System.nanoTime())
+        renderer.draw(
+            canvas, width.toFloat(), height.toFloat(), System.nanoTime(),
+            useGeometry = geometryEditing
+        )
         // 持续重绘（预览也是动画）
         postInvalidateOnAnimation()
     }
@@ -128,6 +146,7 @@ class PreviewView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!geometryEditing) return super.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastX = event.x

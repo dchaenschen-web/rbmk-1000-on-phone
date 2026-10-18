@@ -215,6 +215,20 @@ object ReactorState {
     @Volatile
     var previewAspect: String = ASPECT_OUTER
 
+    /**
+     * 壁纸画布的**真实像素尺寸**，由 ReactorWallpaperService 在
+     * onSurfaceChanged 时写入。
+     *
+     * 为什么重要：系统壁纸选择器里的预览就是按这个尺寸渲染的，
+     * 所以 app 内预览必须用同一尺寸，位置和大小才能对上。
+     * 为 0 表示还没拿到（壁纸没运行过）。
+     */
+    @Volatile
+    var wallpaperWidth: Int = 0
+
+    @Volatile
+    var wallpaperHeight: Int = 0
+
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true
