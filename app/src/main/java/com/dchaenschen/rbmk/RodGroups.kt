@@ -120,18 +120,25 @@ object RodGroups {
     }
 
     /** 先把手动数据用当前模式填满（用于进入手动模式时有个底子） */
-    fun fillManualFromMode() {
+    /**
+     * 把手动数据用某个分组方式填满。
+     *
+     * @param mode 默认用当前模式；从别的模式切到手动时，调用方应传入
+     *             **切换前**的模式，否则会用手动模式自己算，结果全是 0。
+     */
+    fun fillManualFromMode(mode: String = ReactorState.groupMode) {
+        val useMode = if (mode == ReactorState.GROUP_MANUAL) ReactorState.GROUP_RINGS else mode
         val sb = StringBuilder(SIDE * SIDE)
         for (x in -HALF..HALF) {
             for (z in -HALF..HALF) {
                 val r = hypot(x.toFloat(), z.toFloat())
-                val g = if (r <= 15f) groupAt(x, z, r) else 0
+                val g = if (r <= 15f) groupFor(x, z, r, useMode) else 0
                 sb.append(('0' + g.coerceIn(0, 9)))
             }
         }
         ReactorState.manualGroups = sb.toString()
         ReactorState.manualRev++
-        cachedManualStr = ""
+        cachedManualStr = "
     }
 
     /** 清空手动分组（全部归到组 0） */

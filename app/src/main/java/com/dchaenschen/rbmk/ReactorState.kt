@@ -30,6 +30,10 @@ object ReactorState {
     const val SOURCE_SYSTEM = "system"
     const val SOURCE_NONE = "none"
 
+    // 预览比例
+    const val ASPECT_OUTER = outer
+    const val ASPECT_INNER = inner
+
     // 控制棒分组方式
     const val GROUP_RANDOM = "random"     // 原项目的随机分组
     const val GROUP_RINGS = "rings"       // 按同心环分组
@@ -201,6 +205,16 @@ object ReactorState {
     @Volatile
     var dbgAgc: Float = 0f
 
+    /**
+     * 预览使用的屏幕比例。
+     *
+     * 渲染公式依赖画布长宽比（scale = min(w/45, h/37)，垂直锚点 h*0.55），
+     * 所以预览必须用和目标屏幕**完全相同的比例**，否则调出来的位置/大小
+     * 和壁纸实际效果对不上。
+     */
+    @Volatile
+    var previewAspect: String = ASPECT_OUTER
+
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true
@@ -208,6 +222,10 @@ object ReactorState {
     // ================================================================
     // 参数表 / 读写
     // ================================================================
+
+    /** 当前音频来源（system / none） */
+    @Volatile
+    var audioSource: String = SOURCE_NONE
 
     data class Param(
         val key: String,
