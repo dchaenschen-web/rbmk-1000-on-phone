@@ -43,6 +43,7 @@ class ReactorRenderer {
 
         val bins = ReactorState.spectrum
         rods.step(bins, dt, nowNanos / 1_000_000L)
+        RodGroups.ensure(rods.rods)
 
         canvas.drawColor(Color.TRANSPARENT)
 
@@ -135,14 +136,8 @@ class ReactorRenderer {
         val sideMid = shade(sideBase, 0.86f)
         val capColor = ReactorState.colorCap
         val hiColor = ReactorState.colorHighlight
-        val topBase = ReactorState.colorPrimary
-        val accentA = ReactorState.colorAccentA
-        val accentB = ReactorState.colorAccentB
-
-        // 点缀阈值：比例越大，越多控制棒被换成点缀色
-        val ratio = ReactorState.accentRatio.coerceIn(0f, 0.95f)
-        val thrA = 1f - ratio
-        val thrB = 1f - ratio * 0.5f
+        // 预取各组颜色，避免每根棒都调 groupColor()
+        val groupColors = IntArray(ReactorState.GROUP_MAX) { ReactorState.groupColor(it) }
 
         for (rod in sorted) {
             val hh = rod.h
@@ -163,12 +158,9 @@ class ReactorRenderer {
             quad(canvas, c, c0, d0, d, sideDark)
             quad(canvas, d, d0, a0, a, sideMid)
 
-            // 顶面主色，按 seed 做轻微明暗纹理
-            val top = when {
-                rod.seed > thrA -> accentA
-                rod.seed > thrB -> accentB
-                else -> shade(topBase, 0.88f + rod.seed * 0.24f)
-            }
+            // 顶面颜色由「组」决定，再用 seed 做轻微明暗纹理，避免整块死板
+            val groupColor = groupColors[rod.group.coerceIn(0, ReactorState.GROUP_MAX - 1)]
+            val top = shade(groupColor, 0.90f + rod.seed * 0.20f)
             quad(canvas, a, b, c, d, lift(top, amp * 0.16f))
 
             // 中心帽盖

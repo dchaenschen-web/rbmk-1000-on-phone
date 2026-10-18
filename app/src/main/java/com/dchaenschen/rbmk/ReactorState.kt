@@ -5,20 +5,42 @@ package com.dchaenschen.rbmk
  *
  * 动态壁纸服务、音频采集服务、设置界面都在同一个进程，所以用一个单例对象
  * 传数据最简单（跨进程才需要 AIDL/Broadcast）。
+ *
+ * 注意：Kotlin 的 object 里属性初始化有顺序要求 ——
+ * 常量统一放在最上面，否则会报「Variable 'X' must be initialized」。
  */
 object ReactorState {
 
-    // ---- 常量（必须声明在使用它们的属性之前）----
+    // ================================================================
+    // 常量（必须放在所有使用它们的属性之前）
+    // ================================================================
+
     const val BINS = 256
     const val FMIN_DEFAULT = 20.0
     const val FMAX_DEFAULT = 16000.0
 
-    /** 频谱分析范围（Hz），可由用户在设置里调整 */
-    @Volatile
-    var fmin: Float = FMIN_DEFAULT.toFloat()
+    // 律动模式
+    const val IDLE_OFF = "off"
+    const val IDLE_WAVE = "wave"
+    const val IDLE_BREATH = "breath"
+    const val IDLE_PULSE = "pulse"
+    const val IDLE_CHAOS = "chaos"
 
-    @Volatile
-    var fmax: Float = FMAX_DEFAULT.toFloat()
+    // 音频来源
+    const val SOURCE_SYSTEM = "system"
+    const val SOURCE_NONE = "none"
+
+    // 控制棒分组方式
+    const val GROUP_RANDOM = "random"     // 原项目的随机分组
+    const val GROUP_RINGS = "rings"       // 按同心环分组
+    const val GROUP_SECTORS = "sectors"   // 按扇形分区
+    const val GROUP_MANUAL = "manual"     // 手动在俯视图上刷
+
+    const val GROUP_MAX = 6
+
+    // ================================================================
+    // 实时数据
+    // ================================================================
 
     /** 256 段对数频谱，值域 0f..1f。由 AudioCaptureService 持续更新。 */
     @Volatile
@@ -36,174 +58,157 @@ object ReactorState {
     @Volatile
     var hasMusic: Boolean = false
 
-    // ---------------------------------------------------------------- 可调参数
-    // 全部暴露到设置界面，默认值对齐桌面版的观感。
+    // ================================================================
+    // 可调参数（滑杆）
+    // ================================================================
 
-    /** 灵敏度：整体放大倍数 */
+    @Volatile
+    var fmin: Float = FMIN_DEFAULT.toFloat()
+    @Volatile
+    var fmax: Float = FMAX_DEFAULT.toFloat()
+
     @Volatile
     var sensitivity: Float = 1.4f
 
-    /** 平滑度：0 = 立刻响应（抖），0.95 = 非常柔和（迟钝） */
     @Volatile
     var smoothing: Float = 0.75f
 
-    /** 噪声门限：低于该值的频段视为静音 */
     @Volatile
     var noiseFloor: Float = 0.10f
 
-    /** 响应曲线 γ：>1 更强调强频段（更有节律），<1 更平均 */
     @Volatile
     var gamma: Float = 1.7f
 
-    /** 单根棒最大高度（世界单位） */
     @Volatile
     var maxHeight: Float = 4.8f
 
-    /** 静止时的基础高度 */
     @Volatile
     var baseHeight: Float = 0.07f
 
-    /** 视角旋转角（度） */
     @Volatile
     var angleDeg: Float = -18.3f
 
-    /** 等距俯视系数：0.3 = 很斜，1.0 = 接近正上方 */
     @Volatile
     var tilt: Float = 0.58f
 
-    /** 缩放 */
     @Volatile
     var zoom: Float = 1f
 
-    /** 水平偏移（占屏宽的比例，-0.5..0.5） */
     @Volatile
     var offsetX: Float = 0f
 
-    /** 垂直偏移（占屏高的比例，-0.5..0.5） */
     @Volatile
     var offsetY: Float = 0f
 
-    // ---------------------------------------------------------------- 频率调控
-    /** 频率倾斜：每个倍频程提升/衰减多少 dB（以 1kHz 为基准）。
-     *  正值强调高频，负值强调低频。 */
     @Volatile
     var freqTilt: Float = 3f
 
-    /** 低频搁架：对 250Hz 以下再额外增减多少 dB（线性过渡到 250Hz）。 */
     @Volatile
     var lowShelf: Float = 0f
 
-    /**
-     * 预览使用的屏幕比例。
-     *
-     * 渲染公式依赖画布长宽比（scale = min(w/45, h/37)，垂直锚点 h*0.55），
-     * 所以预览必须用和目标屏幕**完全相同的比例**，否则调出来的位置/大小
-     * 和壁纸实际效果对不上。
-     *
-     * outer = Z Flip 外屏 720x748
-     * inner = 当前设备屏幕（内屏）
-     */
-    @Volatile
-    var previewAspect: String = "outer"
-    const val ASPECT_OUTER = "outer"
-    const val ASPECT_INNER = "inner"
-
-    // ---- 调试读数（设置页展示，用于确认参数是否生效）----
-    @Volatile
-    var dbgPeak: Float = 0f
-    @Volatile
-    var dbgAgc: Float = 0f
-    @Volatile
-    var dbgAvgAmp: Float = 0f
-
-    // ---------------------------------------------------------------- 律动模式
-    /**
-     * 没有音乐（或强制演示）时的律动模式。
-     *
-     * off    关闭 —— 控制棒回落到基础高度，完全静止
-     * wave   波浪 —— 从中心向外扩散的柔和波纹（默认）
-     * breath 呼吸 —— 整场缓慢同步起伏
-     * pulse  脉冲 —— 快速向外扫过的同心波
-     * chaos  失控 —— 模拟反应堆失控：无规律抖动 + 偶发爆发
-     */
-    @Volatile
-    var idleMode: String = IDLE_WAVE
-
-    /** 强制用律动模式替代音频驱动（方便在预览里对比各模式） */
-    @Volatile
-    var forceIdle: Boolean = false
-
-    // ---------------------------------------------------------------- 配色
-    // 默认值 = 金属配色方案（移植自桌面版并做过调整）
-
-    /** 顶面主色（多数控制棒） */
-    @Volatile
-    var colorPrimary: Int = 0xFF9AA4AE.toInt()
-
-    /** 点缀色 A：红棕 */
-    @Volatile
-    var colorAccentA: Int = 0xFF8F6D51.toInt()
-
-    /** 点缀色 B：蓝绿 */
-    @Volatile
-    var colorAccentB: Int = 0xFF617668.toInt()
-
-    /** 侧面基色 */
-    @Volatile
-    var colorSide: Int = 0xFF4E565E.toInt()
-
-    /** 顶盖中心色 */
-    @Volatile
-    var colorCap: Int = 0xFF5A636B.toInt()
-
-    /** 高光点颜色 */
-    @Volatile
-    var colorHighlight: Int = 0xFFEEF2F6.toInt()
-
-    /** 外圈装饰环颜色 */
-    @Volatile
-    var colorRing: Int = 0xFF505948.toInt()
-
-    /** 点缀色占全部控制棒的比例（0 = 全是主色，1 = 全是点缀色） */
     @Volatile
     var accentRatio: Float = 0.15f
 
-    /** 配色默认值备份，供「恢复默认配色」使用 */
-    fun resetColors() {
-        colorPrimary = 0xFF9AA4AE.toInt()
-        colorAccentA = 0xFF8F6D51.toInt()
-        colorAccentB = 0xFF617668.toInt()
-        colorSide = 0xFF4E565E.toInt()
-        colorCap = 0xFF5A636B.toInt()
-        colorHighlight = 0xFFEEF2F6.toInt()
-        colorRing = 0xFF505948.toInt()
-        accentRatio = 0.15f
-    }
+    // ================================================================
+    // 律动模式
+    // ================================================================
+
+    @Volatile
+    var idleMode: String = IDLE_WAVE
+
+    /** 强制用律动模式替代音频驱动 */
+    @Volatile
+    var forceIdle: Boolean = false
+
+    // ================================================================
+    // 配色（分组 0..5 + 通用部件）
+    // ================================================================
+
+    @Volatile
+    var colorPrimary: Int = 0xFF9AA4AE.toInt()     // 分组 0
+
+    @Volatile
+    var colorAccentA: Int = 0xFF8F6D51.toInt()     // 分组 1
+
+    @Volatile
+    var colorAccentB: Int = 0xFF617668.toInt()     // 分组 2
+
+    @Volatile
+    var colorGroup3: Int = 0xFF5D7A96.toInt()      // 分组 3
+
+    @Volatile
+    var colorGroup4: Int = 0xFFB49A5E.toInt()      // 分组 4
+
+    @Volatile
+    var colorGroup5: Int = 0xFF7A6B8A.toInt()      // 分组 5
+
+    @Volatile
+    var colorSide: Int = 0xFF4E565E.toInt()
+
+    @Volatile
+    var colorCap: Int = 0xFF5A636B.toInt()
+
+    @Volatile
+    var colorHighlight: Int = 0xFFEEF2F6.toInt()
+
+    @Volatile
+    var colorRing: Int = 0xFF505948.toInt()
+
+    // ================================================================
+    // 分组
+    // ================================================================
+
+    @Volatile
+    var groupMode: String = GROUP_RANDOM
+
+    /** 分组数（2..6） */
+    @Volatile
+    var groupCount: Int = 3
+
+    /** 同心环模式下每组占多少格 */
+    @Volatile
+    var ringSize: Float = 3f
+
+    /** 扇形模式下的扇区数 */
+    @Volatile
+    var sectorCount: Int = 6
+
+    /**
+     * 手动分组数据：31×31 = 961 个字符，每个字符 '0'..'5' 表示组号。
+     * 空字符串表示尚未手动编辑过。
+     */
+    @Volatile
+    var manualGroups: String = ""
+
+    /** 手动分组每次修改 +1，让渲染层知道要重算 */
+    @Volatile
+    var manualRev: Int = 0
+
+    /** 设置页里「当前正在刷的组」 */
+    @Volatile
+    var paintingGroup: Int = 0
+
+    // ================================================================
+    // 调试读数
+    // ================================================================
+
+    @Volatile
+    var dbgPeak: Float = 0f
+
+    @Volatile
+    var dbgAvgAmp: Float = 0f
+
+    @Volatile
+    var dbgAgc: Float = 0f
 
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true
 
-    /**
-     * 音频来源。
-     *
-     * SYSTEM = AudioPlaybackCapture（需一次「录屏」授权，能精确捕捉本机播放的音乐）
-     * MIC    = 麦克风（不需要授权弹窗、不会被系统回收，但戴耳机时听不到）
-     * NONE   = 不采集，用待机波动
-     */
-    const val IDLE_OFF = "off"
-    const val IDLE_WAVE = "wave"
-    const val IDLE_BREATH = "breath"
-    const val IDLE_PULSE = "pulse"
-    const val IDLE_CHAOS = "chaos"
+    // ================================================================
+    // 参数表 / 读写
+    // ================================================================
 
-    const val SOURCE_SYSTEM = "system"
-    const val SOURCE_NONE = "none"
-
-    @Volatile
-    var audioSource: String = SOURCE_NONE
-
-    /** 参数说明表：设置界面据此自动生成滑杆 */
     data class Param(
         val key: String,
         val label: String,
@@ -227,18 +232,16 @@ object ReactorState {
         Param("offset_x", "水平位置", -0.5f, 0.5f, 0f, hint = "整体左右平移（占屏宽比例）"),
         Param("offset_y", "垂直位置", -0.5f, 0.5f, 0f, hint = "整体上下平移（占屏高比例）"),
         Param("freq_tilt", "频率倾斜", -6f, 12f, 3f, digits = 1,
-            hint = "每个倍频程升降多少 dB。调大=更强调高频，负值=更强调低频"),
+            hint = "每个倍频程升降多少 dB。调大=更强调高频"),
         Param("low_shelf", "低频增减", -12f, 12f, 0f, digits = 1,
-            hint = "对 250Hz 以下单独增减 dB。中间一直顶满时调成负值"),
-        Param("freq_low", "频谱下限", 20f, 400f, 20f, digits = 0,
-            hint = "低于该频率不参与分析（Hz）"),
-        Param("freq_high", "频谱上限", 2000f, 16000f, 16000f, digits = 0,
-            hint = "高于该频率不参与分析（Hz）"),
-        Param("accent_ratio", "点缀比例", 0f, 0.8f, 0.15f,
-            hint = "红棕/蓝绿点缀色占全部控制棒的比例"),
+            hint = "对 250Hz 以下单独增减 dB"),
+        Param("freq_low", "频谱下限", 20f, 400f, 20f, digits = 0, hint = "低于该频率不参与分析（Hz）"),
+        Param("freq_high", "频谱上限", 2000f, 16000f, 16000f, digits = 0, hint = "高于该频率不参与分析（Hz）"),
+        Param("ring_size", "环宽", 1f, 8f, 3f, digits = 1, hint = "同心环分组时每组占多少格"),
+        Param("sector_count", "扇区数", 2f, 12f, 6f, digits = 0, hint = "扇形分组时分成几个扇区"),
+        Param("accent_ratio", "随机点缀比例", 0f, 0.8f, 0.15f, hint = "随机分组时非主色棒的比例"),
     )
 
-    /** 把某个参数写入内存 */
     fun apply(key: String, value: Float) {
         when (key) {
             "sensitivity" -> sensitivity = value
@@ -256,10 +259,12 @@ object ReactorState {
             "low_shelf" -> lowShelf = value
             "freq_low" -> fmin = value
             "freq_high" -> fmax = value
+            "ring_size" -> ringSize = value
+            "sector_count" -> sectorCount = value.toInt().coerceIn(2, 12)
+            "accent_ratio" -> accentRatio = value
         }
     }
 
-    /** 读取某个参数的当前值 */
     fun value(key: String): Float = when (key) {
         "sensitivity" -> sensitivity
         "smoothing" -> smoothing
@@ -276,7 +281,47 @@ object ReactorState {
         "low_shelf" -> lowShelf
         "freq_low" -> fmin
         "freq_high" -> fmax
+        "ring_size" -> ringSize
+        "sector_count" -> sectorCount.toFloat()
         "accent_ratio" -> accentRatio
         else -> 0f
+    }
+
+    // ================================================================
+    // 分组颜色
+    // ================================================================
+
+    fun groupColor(i: Int): Int = when (i.coerceIn(0, GROUP_MAX - 1)) {
+        0 -> colorPrimary
+        1 -> colorAccentA
+        2 -> colorAccentB
+        3 -> colorGroup3
+        4 -> colorGroup4
+        else -> colorGroup5
+    }
+
+    fun setGroupColor(i: Int, color: Int) {
+        when (i.coerceIn(0, GROUP_MAX - 1)) {
+            0 -> colorPrimary = color
+            1 -> colorAccentA = color
+            2 -> colorAccentB = color
+            3 -> colorGroup3 = color
+            4 -> colorGroup4 = color
+            else -> colorGroup5 = color
+        }
+    }
+
+    fun resetColors() {
+        colorPrimary = 0xFF9AA4AE.toInt()
+        colorAccentA = 0xFF8F6D51.toInt()
+        colorAccentB = 0xFF617668.toInt()
+        colorGroup3 = 0xFF5D7A96.toInt()
+        colorGroup4 = 0xFFB49A5E.toInt()
+        colorGroup5 = 0xFF7A6B8A.toInt()
+        colorSide = 0xFF4E565E.toInt()
+        colorCap = 0xFF5A636B.toInt()
+        colorHighlight = 0xFFEEF2F6.toInt()
+        colorRing = 0xFF505948.toInt()
+        accentRatio = 0.15f
     }
 }

@@ -106,6 +106,21 @@ class MainActivity : Activity() {
             .apply()
     }
 
+    /** 保存分组设置 */
+    private fun saveGroupConfig() {
+        ReactorConfig.saveGroups(this)
+    }
+
+    /** 组号 -> 持久化 key */
+    private fun groupColorKey(g: Int): String = when (g) {
+        0 -> "color_primary"
+        1 -> "color_accent_a"
+        2 -> "color_accent_b"
+        3 -> "color_group3"
+        4 -> "color_group4"
+        else -> "color_group5"
+    }
+
     private fun saveParam(key: String, value: Float) {
         prefs.edit().putFloat(key, value).apply()
     }
@@ -383,6 +398,208 @@ class MainActivity : Activity() {
             ReactorConfig.saveAllColors(this)
             recreate()
         })
+        root.addView(spacer(dp(14)))
+
+        // ---------------- 分组配色 ----------------
+        root.addView(label("分组 · 控制棒按组上色", 14f, Color.parseColor("#c9d1c9")))
+
+        val groupModeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val groupModeButtons = mutableListOf<Button>()
+        val groupModeKeys = listOf(
+            ReactorState.GROUP_RANDOM to "随机",
+            ReactorState.GROUP_RINGS to "同心环",
+            ReactorState.GROUP_SECTORS to "扇形",
+            ReactorState.GROUP_MANUAL to "手动"
+        )
+        val refreshGroupModes: () -> Unit = {
+            groupModeButtons.forEachIndexed { i, b ->
+                val on = groupModeKeys[i].first == ReactorState.groupMode
+                b.setTextColor(
+                    if (on) Color.parseColor("#0a0d0b") else Color.parseColor("#c9d1c9")
+                )
+                b.setBackgroundColor(
+                    if (on) Color.parseColor("#dded84") else Color.parseColor("#1a201c")
+                )
+            }
+        }
+        for ((key, name) in groupModeKeys) {
+            val b = Button(this).apply {
+                text = name
+                textSize = 12f
+                isAllCaps = false
+                setOnClickListener {
+                    val prevMode = ReactorState.groupMode
+                    ReactorState.groupMode = key
+                    if (key == ReactorState.GROUP_MANUAL &&
+                        ReactorState.manualGroups.length != RodGroups.SIDE * RodGroups.SIDE
+                    ) {
+                        // 用切换前的模式生成底稿，而不是用手动模式自己算
+                        RodGroups.fillManualFromMode(prevMode)
+                    }
+                    saveGroupConfig()
+                    refreshGroupModes()
+                    previewView?.invalidate()
+                }
+            }
+            groupModeRow.addView(
+                b,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            groupModeButtons.add(b)
+        }
+        root.addView(groupModeRow)
+        refreshGroupModes()
+
+        // 分组数
+        root.addView(label("分组数量", 13f, Color.parseColor("#c9d1c9")))
+        val countRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val countButtons = mutableListOf<Button>()
+        val refreshCounts: () -> Unit = {
+            countButtons.forEachIndexed { i, b ->
+                val n = i + 2
+                val on = n == ReactorState.groupCount
+                b.setTextColor(
+                    if (on) Color.parseColor("#0a0d0b") else Color.parseColor("#c9d1c9")
+                )
+                b.setBackgroundColor(
+                    if (on) Color.parseColor("#dded84") else Color.parseColor("#1a201c")
+                )
+            }
+        }
+        for (n in 2..ReactorState.GROUP_MAX) {
+            val b = Button(this).apply {
+                text = "$n"
+                textSize = 12f
+                isAllCaps = false
+                setOnClickListener {
+                    ReactorState.groupCount = n
+                    saveGroupConfig()
+                    refreshCounts()
+                    previewView?.invalidate()
+                }
+            }
+            countRow.addView(
+                b,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            countButtons.add(b)
+        }
+        root.addView(countRow)
+        refreshCounts()
+
+        // 俯视图
+        root.addView(
+            hint("俯视图：直观看到分组结果（手动模式下可直接点/拖刷格）")
+        )
+        val topView = TopView(this)
+        topView.onPainted = { saveGroupConfig() }
+        val topFrame = android.widget.FrameLayout(this)
+        topFrame.addView(
+            topView,
+            android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.CENTER_HORIZONTAL
+            )
+        )
+        root.addView(
+            topFrame, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        root.addView(button("以当前模式填充手动分组") {
+            RodGroups.fillManualFromMode(ReactorState.groupMode)
+            saveGroupConfig()
+            topView.invalidate()
+            previewView?.invalidate()
+            Toast.makeText(this, "已填充", Toast.LENGTH_SHORT).show()
+        })
+        root.addView(button("清空手动分组（全部归到组 1）") {
+            RodGroups.clearManual()
+            saveGroupConfig()
+            topView.invalidate()
+            previewView?.invalidate()
+            Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show()
+        })
+
+        // 手动刷格时选组
+        root.addView(label("手动刷格：选择要刷的组", 13f, Color.parseColor("#c9d1c9")))
+        val paintRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val paintButtons = mutableListOf<Button>()
+        val refreshPaint: () -> Unit = {
+            paintButtons.forEachIndexed { i, b ->
+                val on = i == ReactorState.paintingGroup
+                b.setTextColor(
+                    if (on) Color.parseColor("#0a0d0b") else Color.parseColor("#c9d1c9")
+                )
+                b.setBackgroundColor(
+                    if (on) ReactorState.groupColor(i) else Color.parseColor("#1a201c")
+                )
+            }
+        }
+        for (g in 0 until ReactorState.GROUP_MAX) {
+            val b = Button(this).apply {
+                text = "组${g + 1}"
+                textSize = 11f
+                isAllCaps = false
+                setOnClickListener {
+                    ReactorState.paintingGroup = g
+                    refreshPaint()
+                }
+            }
+            paintRow.addView(
+                b,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            paintButtons.add(b)
+        }
+        root.addView(paintRow)
+        refreshPaint()
+
+        // 组颜色
+        root.addView(label("各组颜色 · 点色块调整", 13f, Color.parseColor("#c9d1c9")))
+        val groupColorRefresh = mutableListOf<() -> Unit>()
+        for (rowIdx in 0 until 2) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (col in 0 until 3) {
+                val g = rowIdx * 3 + col
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(4), 0, dp(4), 0)
+                }
+                cell.addView(label("组${g + 1}", 11f, Color.parseColor("#9aa596")))
+                val swatch = Button(this).apply {
+                    text = ""
+                    isAllCaps = false
+                    setBackgroundColor(ReactorState.groupColor(g))
+                }
+                swatch.setOnClickListener {
+                    pickColor("组${g + 1} 颜色", ReactorState.groupColor(g)) { picked ->
+                        ReactorState.setGroupColor(g, picked)
+                        swatch.setBackgroundColor(picked)
+                        ReactorConfig.saveColor(this@MainActivity, groupColorKey(g), picked)
+                        refreshPaint()
+                        topView.invalidate()
+                        previewView?.invalidate()
+                    }
+                }
+                cell.addView(
+                    swatch,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(38)
+                    )
+                )
+                groupColorRefresh.add {
+                    swatch.setBackgroundColor(ReactorState.groupColor(g))
+                }
+                row.addView(
+                    cell,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                )
+            }
+            root.addView(row)
+        }
         root.addView(spacer(dp(14)))
 
         val sw = Switch(this).apply {

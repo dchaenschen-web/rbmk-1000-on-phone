@@ -29,6 +29,9 @@ class RodArray {
 
     class Rod(val x: Int, val z: Int, val r: Float, val seed: Float) {
         var h: Float = 0f
+
+        /** 分组编号（0..5），由 RodGroups 计算 */
+        var group: Int = 0
     }
 
     /** AGC 峰值包络（快升慢降） */

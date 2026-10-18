@@ -22,6 +22,9 @@ object ReactorConfig {
     private val DEF_CAP: Int = 0xFF5A636B.toInt()
     private val DEF_HIGHLIGHT: Int = 0xFFEEF2F6.toInt()
     private val DEF_RING: Int = 0xFF505948.toInt()
+    private val DEF_GROUP3: Int = 0xFF5D7A96.toInt()
+    private val DEF_GROUP4: Int = 0xFFB49A5E.toInt()
+    private val DEF_GROUP5: Int = 0xFF7A6B8A.toInt()
 
     fun load(context: Context) {
         val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -42,12 +45,31 @@ object ReactorConfig {
         ReactorState.colorCap = prefs.getInt("color_cap", DEF_CAP)
         ReactorState.colorHighlight = prefs.getInt("color_highlight", DEF_HIGHLIGHT)
         ReactorState.colorRing = prefs.getInt("color_ring", DEF_RING)
+        ReactorState.colorGroup3 = prefs.getInt("color_group3", DEF_GROUP3)
+        ReactorState.colorGroup4 = prefs.getInt("color_group4", DEF_GROUP4)
+        ReactorState.colorGroup5 = prefs.getInt("color_group5", DEF_GROUP5)
+
+        // 分组设置
+        ReactorState.groupMode = prefs.getString(
+            "group_mode", ReactorState.GROUP_RANDOM
+        ) ?: ReactorState.GROUP_RANDOM
+        ReactorState.groupCount = prefs.getInt("group_count", 3).coerceIn(2, ReactorState.GROUP_MAX)
+        ReactorState.manualGroups = prefs.getString("manual_groups", "") ?: ""
     }
 
     /** 保存单个颜色 */
     fun saveColor(context: Context, key: String, color: Int) {
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             .edit().putInt(key, color).apply()
+    }
+
+    /** 保存分组设置 */
+    fun saveGroups(context: Context) {
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+            .putString("group_mode", ReactorState.groupMode)
+            .putInt("group_count", ReactorState.groupCount)
+            .putString("manual_groups", ReactorState.manualGroups)
+            .apply()
     }
 
     /** 保存全部配色（用于「恢复默认配色」） */
@@ -60,6 +82,9 @@ object ReactorConfig {
             .putInt("color_cap", ReactorState.colorCap)
             .putInt("color_highlight", ReactorState.colorHighlight)
             .putInt("color_ring", ReactorState.colorRing)
+            .putInt("color_group3", ReactorState.colorGroup3)
+            .putInt("color_group4", ReactorState.colorGroup4)
+            .putInt("color_group5", ReactorState.colorGroup5)
             .apply()
     }
 }
