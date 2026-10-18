@@ -277,10 +277,39 @@ class MainActivity : Activity() {
         root.addView(spacer(dp(14)))
 
         // ---------------- 参数 ----------------
-        root.addView(label("参数 · 调整后立刻生效", 14f, Color.parseColor("#c9d1c9")))
-        for (p in ReactorState.PARAMS) {
-            root.addView(slider(p))
+        root.addView(
+            label(
+                "参数 · 调整后立刻生效（此区域可单独上下滑动）",
+                14f, Color.parseColor("#c9d1c9")
+            )
+        )
+
+        // 参数区单独滚动：高度固定为屏幕的 42%，这样上面的预览和频谱
+        // 始终留在视野里，可以一边看图一边划参数。
+        val paramScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = true
+            scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+            isFillViewport = true
         }
+        val paramBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        paramScroll.addView(
+            paramBox,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        for (p in ReactorState.PARAMS) {
+            paramBox.addView(slider(p))
+        }
+        root.addView(
+            paramScroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.42f).toInt()
+            )
+        )
+        root.addView(spacer(dp(10)))
 
         val sw = Switch(this).apply {
             text = "显示歌名"
@@ -361,7 +390,12 @@ class MainActivity : Activity() {
         root.addView(button("开源许可") {
             startActivity(Intent(this, LicensesActivity::class.java))
         })
-        root.addView(hint("基于 Andy Wang 的 reactor-audio-visualizer（MIT 许可证）的 Android 移植。"))
+        root.addView(
+            hint(
+                "基于 Andy Wang 的 reactor-audio-visualizer（MIT 许可证）的 Android 移植。\n" +
+                        "原项目：https://github.com/wzk112/reactor-audio-visualizer"
+            )
+        )
 
         return scroll
     }

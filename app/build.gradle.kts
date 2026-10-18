@@ -12,8 +12,8 @@ android {
         // Android 10 (API 29) 才有 AudioPlaybackCapture
         minSdk = 29
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
 
     // ---------------------------------------------------------------- 固定签名

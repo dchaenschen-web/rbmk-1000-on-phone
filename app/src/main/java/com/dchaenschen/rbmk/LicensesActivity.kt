@@ -59,7 +59,7 @@ SOFTWARE.
         })
 
         root.addView(TextView(this).apply {
-            text = "本应用是 Andrew Wang 的 reactor-audio-visualizer 的衍生作品，" +
+            text = "本应用是 Andy Wang 的 reactor-audio-visualizer 的衍生作品，" +
                     "原始项目以 MIT 许可证发布。控制棒的几何与投影算法移植自原项目，"
                     "在此基础上做了 Android 移植（动态壁纸、音频回采、歌名读取）与金属配色调整。"
             setTextColor(Color.parseColor("#8e998a"))
@@ -76,7 +76,11 @@ SOFTWARE.
         })
 
         root.addView(TextView(this).apply {
-            text = "\n原作者：Andy Wang\n项目地址：https://github.com/Andy-Wang/reactor-audio-visualizer"
+            text = "\n原作者：Andy Wang" +
+                    "\n原项目：https://github.com/wzk112/reactor-audio-visualizer" +
+                    "\n\n本应用在其基础上增加了 Android 动态壁纸实现、" +
+                    "系统音频采集（AudioPlaybackCapture）、" +
+                    "播放信息读取（NotificationListenerService）与金属配色。"
             setTextColor(Color.parseColor("#7f8a7c"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         })

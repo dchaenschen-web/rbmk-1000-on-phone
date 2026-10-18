@@ -22,13 +22,16 @@ SOFTWARE.
 
 ---
 
-## 关于本项目
+## 关于本仓库 / About this repository
 
-本仓库是 **reactor-audio-visualizer** 的 Android 衍生移植：
+本仓库是 **Reactor Audio Visualizer** 的 Android 移植衍生作品：
 
-* 原始项目：reactor-audio-visualizer，作者 Andy Wang，MIT 许可证
-* 控制棒的几何（709 根、x/z ∈ [-15,15]、r ≤ 15）与等距投影算法移植自原项目
-* 新增内容：Android 动态壁纸（WallpaperService）、AudioPlaybackCapture 音频回采、
-  NotificationListenerService 读取播放信息、金属配色调整
+* 原项目：<https://github.com/wzk112/reactor-audio-visualizer>
+* 原作者：Andy Wang（MIT 许可证，版权声明见上方）
+* 移植内容：控制棒几何与等距投影算法（709 根、x/z ∈ [-15,15]、r ≤ 15）
+  来自原项目的 Web 实现；
+* 新增内容：Android 动态壁纸（WallpaperService）、AudioPlaybackCapture
+  系统音频采集、NotificationListenerService 读取播放信息、
+  实时频谱可视化与参数调节、金属配色调整、待机律动模式。
 
-按 MIT 要求，上述原始版权声明与许可全文保留在此。
+依照 MIT 许可证要求，上方的原始版权声明与许可全文完整保留。

@@ -151,7 +151,6 @@ object ReactorState {
     const val IDLE_CHAOS = "chaos"
 
     const val SOURCE_SYSTEM = "system"
-    const val SOURCE_MIC = "mic"
     const val SOURCE_NONE = "none"
 
     @Volatile
