@@ -2,18 +2,20 @@ name: Build APK
 
 # 说明
 # ----
-# GitHub 的 ubuntu runner 自带 Android SDK（$ANDROID_HOME），
-# 所以不用 android-actions/setup-android（它经常在这个步骤失败）。
-# 只需要确认 platform 34 / build-tools 34 存在，缺了就补装。
+# 1. GitHub 的 ubuntu runner 自带 Android SDK，不用 android-actions/setup-android。
+# 2. 固定签名密钥：首次运行生成 keystore/debug.keystore 并自动提交回仓库，
+#    之后每次构建都用同一把钥匙 —— 这样 APK 才能覆盖安装（否则必须卸载旧版）。
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:        # 也可以在网页上手动触发
+  workflow_dispatch:
+
+permissions:
+  contents: write        # 需要提交首次生成的签名密钥
 
 jobs:
   build:
-    # 固定 22.04：SDK 预装内容比 ubuntu-latest 稳定，避免镜像更新导致路径变化
     runs-on: ubuntu-22.04
 
     steps:
@@ -26,35 +28,39 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: 确保固定签名密钥存在
+        shell: bash
+        run: |
+          mkdir -p keystore
+          if [ ! -f keystore/debug.keystore ]; then
+            echo "首次构建：生成固定调试密钥"
+            keytool -genkeypair -v \
+              -keystore keystore/debug.keystore \
+              -storepass android -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          else
+            echo "已存在固定密钥，复用"
+          fi
+          ls -l keystore/
+
       - name: 确认/安装 Android SDK 组件
         shell: bash
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
           SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
             echo "::error::runner 上找不到 Android SDK 目录"
             exit 1
           fi
-          echo "SDK 目录: $SDK"
-          ls "$SDK" | head -20
-
           SDKMANAGER="$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -n1)"
           if [ -z "$SDKMANAGER" ]; then
-            echo "::error::找不到 sdkmanager 可执行文件"
-            find "$SDK" -maxdepth 3 -type d | head -30
+            echo "::error::找不到 sdkmanager"
             exit 1
           fi
-          echo "sdkmanager: $SDKMANAGER"
-
-          # 已存在就不重复装；缺什么补什么
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" || true
-
-          echo "--- 安装后检查 ---"
-          ls "$SDK/platforms" || true
-          ls "$SDK/build-tools" || true
 
       - name: 安装 Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -63,6 +69,27 @@ jobs:
 
       - name: 编译 Debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: 校验签名
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -n1)
+          echo "APK: $APK"
+          "$ANDROID_HOME"/build-tools/34.0.0/apksigner verify --print-certs "$APK" || true
+
+      - name: 提交固定签名密钥（仅首次）
+        if: always()
+        shell: bash
+        run: |
+          if [ -f keystore/debug.keystore ] && \
+             ! git ls-files --error-unmatch keystore/debug.keystore >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -f keystore/debug.keystore
+            git commit -m "chore: add fixed signing keystore for in-place updates"
+            git push
+          else
+            echo "密钥已在仓库中，无需提交"
+          fi
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4

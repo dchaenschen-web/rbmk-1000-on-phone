@@ -51,8 +51,16 @@ class ReactorRenderer {
         val tilt = ReactorState.tilt
         val zoom = ReactorState.zoom
 
+        // 阵列整体平移放到画布变换里，这样歌名浮层不受影响
+        canvas.save()
+        canvas.translate(
+            width * ReactorState.offsetX,
+            height * ReactorState.offsetY
+        )
         drawRings(canvas, width, height, angle, tilt, zoom)
         drawRods(canvas, width, height, angle, tilt, zoom)
+        canvas.restore()
+
         if (ReactorState.showTitle) drawTitle(canvas, width, height)
     }
 

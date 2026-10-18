@@ -12,3 +12,6 @@ captures/
 *.aab
 *.keystore
 *.jks
+
+# 固定签名密钥要提交进仓库（这样每次构建签名一致，才能覆盖安装）
+!keystore/debug.keystore

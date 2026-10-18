@@ -65,6 +65,15 @@ class MainActivity : Activity() {
         ReactorState.showTitle = prefs.getBoolean("show_title", true)
     }
 
+    /** 保存预览里拖动/缩放得到的几何参数 */
+    private fun saveGeometry() {
+        prefs.edit()
+            .putFloat("zoom", ReactorState.zoom)
+            .putFloat("offset_x", ReactorState.offsetX)
+            .putFloat("offset_y", ReactorState.offsetY)
+            .apply()
+    }
+
     private fun saveParam(key: String, value: Float) {
         prefs.edit().putFloat(key, value).apply()
     }
@@ -93,16 +102,44 @@ class MainActivity : Activity() {
         root.addView(statusText)
         root.addView(spacer(dp(16)))
 
-        // ============ 1. 音频授权 ============
-        root.addView(sectionTitle("1. 音频采集"))
-        projectionBtn = button("授权采集系统音频") { requestProjection() }
+        // ============ 预览：调整位置和大小 ============
+        root.addView(sectionTitle("预览 · 调整位置和大小"))
+        val preview = PreviewView(this)
+        preview.onChanged = { saveGeometry() }
+        root.addView(
+            preview, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(260)
+            )
+        )
+        root.addView(hint("单指拖动 = 移动位置　双指捏合 = 缩放。调整立刻保存并作用到壁纸。"))
+        root.addView(button("重置位置和大小") {
+            ReactorState.offsetX = 0f
+            ReactorState.offsetY = 0f
+            ReactorState.zoom = 1f
+            saveGeometry()
+            Toast.makeText(this, "已重置", Toast.LENGTH_SHORT).show()
+        })
+        root.addView(spacer(dp(16)))
+
+        // ============ 1. 音频来源 ============
+        root.addView(sectionTitle("1. 音频来源（三选一）"))
+        projectionBtn = button("系统音频 · 精确（需一次录屏授权）") { requestProjection() }
         root.addView(projectionBtn)
+        root.addView(button("麦克风 · 稳定（无需授权弹窗）") {
+            AudioCaptureService.startMic(this)
+            Toast.makeText(this, "已切换到麦克风采集", Toast.LENGTH_SHORT).show()
+        })
+        root.addView(button("停止采集") {
+            AudioCaptureService.stop(this)
+            ReactorState.audioSource = ReactorState.SOURCE_NONE
+            Toast.makeText(this, "已停止采集", Toast.LENGTH_SHORT).show()
+        })
         root.addView(
             hint(
-                "为什么需要「录制屏幕」授权？\n" +
-                        "Android 把「采集本机播放的声音」绑在 MediaProjection（媒体投射）接口上，" +
-                        "系统的授权框统一写成「录制或投射屏幕」。\n" +
-                        "本应用只使用其中的音频通道：不读取画面、不录屏、不保存、不上传。"
+                "系统音频：精确捕捉本机播放的音乐。Android 把它绑在 MediaProjection 上，" +
+                        "所以会弹「录制或投射屏幕」授权框（本应用只用音频通道，不读取画面）。\n" +
+                        "麦克风：不需要授权弹窗，也不会被系统中途回收；外放效果好，" +
+                        "戴耳机/蓝牙时听不到。"
             )
         )
         root.addView(button("允许后台运行（防被杀）") { requestBatteryExemption() })
@@ -244,13 +281,21 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------- 状态
     private fun refreshStatus() {
         val parts = mutableListOf<String>()
-        parts += if (AudioCaptureService.running) "音频采集：已开启" else "音频采集：未开启"
+        val srcName = when (ReactorState.audioSource) {
+            ReactorState.SOURCE_SYSTEM -> "系统音频"
+            ReactorState.SOURCE_MIC -> "麦克风"
+            else -> "未采集"
+        }
+        parts += if (AudioCaptureService.running) "采集：$srcName" else "采集：未开启"
         parts += if (hasNotificationAccess()) "歌名读取：已授权" else "歌名读取：未授权"
         val err = AudioCaptureService.lastError
         statusText.text = parts.joinToString("    ") +
                 if (err.isBlank()) "" else "\n⚠ $err"
         projectionBtn.text =
-            if (AudioCaptureService.running) "重新授权采集系统音频" else "授权采集系统音频"
+            if (ReactorState.audioSource == ReactorState.SOURCE_SYSTEM)
+                "系统音频 · 使用中（点此重新授权）"
+            else
+                "系统音频 · 精确（需一次录屏授权）"
         notifBtn.text =
             if (hasNotificationAccess()) "通知使用权（已开启）" else "打开通知使用权设置"
     }
@@ -334,7 +379,7 @@ class MainActivity : Activity() {
 
         if (requestCode == REQ_PROJECTION) {
             if (resultCode == RESULT_OK && data != null) {
-                AudioCaptureService.start(this, resultCode, data)
+                AudioCaptureService.startSystem(this, resultCode, data)
                 Toast.makeText(this, "开始采集系统音频", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "已取消授权", Toast.LENGTH_SHORT).show()

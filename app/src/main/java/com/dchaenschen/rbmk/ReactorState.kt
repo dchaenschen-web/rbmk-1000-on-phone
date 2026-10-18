@@ -68,9 +68,31 @@ object ReactorState {
     @Volatile
     var zoom: Float = 1f
 
+    /** 水平偏移（占屏宽的比例，-0.5..0.5） */
+    @Volatile
+    var offsetX: Float = 0f
+
+    /** 垂直偏移（占屏高的比例，-0.5..0.5） */
+    @Volatile
+    var offsetY: Float = 0f
+
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true
+
+    /**
+     * 音频来源。
+     *
+     * SYSTEM = AudioPlaybackCapture（需一次「录屏」授权，能精确捕捉本机播放的音乐）
+     * MIC    = 麦克风（不需要授权弹窗、不会被系统回收，但戴耳机时听不到）
+     * NONE   = 不采集，用待机波动
+     */
+    const val SOURCE_SYSTEM = "system"
+    const val SOURCE_MIC = "mic"
+    const val SOURCE_NONE = "none"
+
+    @Volatile
+    var audioSource: String = SOURCE_NONE
 
     /** 参数说明表：设置界面据此自动生成滑杆 */
     data class Param(
@@ -93,6 +115,8 @@ object ReactorState {
         Param("angle_deg", "视角角度", -90f, 90f, -18.3f, digits = 1, hint = "水平旋转"),
         Param("tilt", "俯视倾角", 0.3f, 1f, 0.58f, hint = "越小越接近平视"),
         Param("zoom", "缩放", 0.5f, 2f, 1f, hint = "阵列在屏幕上的大小"),
+        Param("offset_x", "水平位置", -0.5f, 0.5f, 0f, hint = "整体左右平移（占屏宽比例）"),
+        Param("offset_y", "垂直位置", -0.5f, 0.5f, 0f, hint = "整体上下平移（占屏高比例）"),
     )
 
     /** 把某个参数写入内存 */
@@ -107,6 +131,8 @@ object ReactorState {
             "angle_deg" -> angleDeg = value
             "tilt" -> tilt = value
             "zoom" -> zoom = value
+            "offset_x" -> offsetX = value
+            "offset_y" -> offsetY = value
         }
     }
 
@@ -121,6 +147,8 @@ object ReactorState {
         "angle_deg" -> angleDeg
         "tilt" -> tilt
         "zoom" -> zoom
+        "offset_x" -> offsetX
+        "offset_y" -> offsetY
         else -> 0f
     }
 }

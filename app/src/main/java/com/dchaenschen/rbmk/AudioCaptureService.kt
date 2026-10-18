@@ -10,6 +10,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -17,17 +18,22 @@ import android.os.IBinder
 import kotlin.math.pow
 
 /**
- * 用 AudioPlaybackCapture 采集「本机正在播放的声音」并实时算频谱。
+ * 音频采集服务，支持两种来源：
+ *
+ *   SYSTEM —— AudioPlaybackCapture，精确捕捉本机播放的音乐
+ *             （需要一次 MediaProjection「录屏」授权，授权是会话级的）
+ *   MIC    —— 麦克风，不需要授权弹窗、不怕被系统回收
+ *             （外放时效果好，戴耳机/蓝牙时听不到）
  *
  * 踩过的坑
  * --------
- * 1) **启动顺序**：Android 14 要求先拿到有效的 MediaProjection token，
- *    才能 startForeground(type=mediaProjection)。顺序反了会抛 SecurityException，
- *    表现就是应用「停止运行」。
- * 2) **read 出错后必须重建**：AudioRecord.read 返回负值（ERROR_DEAD_OBJECT 等）时
- *    如果只是 sleep 后 continue，录音器其实已经废了，采集会永久失效。
- *    这里改成自动重建 AudioRecord。
- * 3) 所有异常都兜住并写进 ReactorState.lastError，不让整个应用崩掉。
+ * 1) **启动顺序**：Android 14 对「先 getMediaProjection 还是先 startForeground」
+ *    在部分机型上要求不一致：有的机型先启动 mediaProjection 类型的前台服务会抛
+ *    SecurityException，有的机型反过来会失败。这里**两种顺序都试**，
+ *    哪个成功用哪个。
+ * 2) **read 出错后必须重建**：AudioRecord.read 返回负值说明录音器已损坏，
+ *    只 sleep 救不回来，必须重建。
+ * 3) 所有异常都兜住并写进 lastError，避免整个应用崩掉。
  */
 class AudioCaptureService : Service() {
 
@@ -36,8 +42,8 @@ class AudioCaptureService : Service() {
         private const val NOTIF_ID = 1001
         const val EXTRA_CODE = "result_code"
         const val EXTRA_DATA = "result_data"
+        const val EXTRA_SOURCE = "source"
 
-        /** 供设置页判断当前是否在采集 */
         @Volatile
         var running: Boolean = false
             private set
@@ -45,8 +51,10 @@ class AudioCaptureService : Service() {
         @Volatile
         var lastError: String = ""
 
-        fun start(context: Context, resultCode: Int, data: Intent) {
+        /** 启动系统音频采集（需要 MediaProjection 的授权结果） */
+        fun startSystem(context: Context, resultCode: Int, data: Intent) {
             val i = Intent(context, AudioCaptureService::class.java).apply {
+                putExtra(EXTRA_SOURCE, ReactorState.SOURCE_SYSTEM)
                 putExtra(EXTRA_CODE, resultCode)
                 putExtra(EXTRA_DATA, data)
             }
@@ -54,6 +62,18 @@ class AudioCaptureService : Service() {
                 context.startForegroundService(i)
             } catch (e: Exception) {
                 lastError = "启动采集服务失败：${e.javaClass.simpleName}"
+            }
+        }
+
+        /** 启动麦克风采集（不需要任何授权弹窗） */
+        fun startMic(context: Context) {
+            val i = Intent(context, AudioCaptureService::class.java).apply {
+                putExtra(EXTRA_SOURCE, ReactorState.SOURCE_MIC)
+            }
+            try {
+                context.startForegroundService(i)
+            } catch (e: Exception) {
+                lastError = "启动麦克风失败：${e.javaClass.simpleName}"
             }
         }
 
@@ -68,6 +88,7 @@ class AudioCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var record: AudioRecord? = null
     private var thread: Thread? = null
+    private var source: String = ReactorState.SOURCE_NONE
 
     @Volatile
     private var stopped = false
@@ -86,12 +107,59 @@ class AudioCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // START_STICKY 重启时 intent 为 null，没有 token 就没法采集，直接收工
         if (intent == null) {
             stopSelf()
             return START_NOT_STICKY
         }
 
+        source = intent.getStringExtra(EXTRA_SOURCE) ?: ReactorState.SOURCE_MIC
+
+        if (source == ReactorState.SOURCE_SYSTEM) {
+            return startSystemCapture(intent)
+        }
+        return startMicCapture()
+    }
+
+    // ---------------------------------------------------------------- 麦克风
+    private fun startMicCapture(): Int {
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                    NOTIF_ID, buildNotification("正在读取麦克风"),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            } else {
+                startForeground(NOTIF_ID, buildNotification("正在读取麦克风"))
+            }
+        } catch (e: Exception) {
+            lastError = "麦克风前台服务启动失败：${e.javaClass.simpleName}"
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        val rec = try {
+            buildRecord(null, MediaRecorder.AudioSource.MIC)
+        } catch (e: SecurityException) {
+            lastError = "缺少录音权限，请在系统设置里允许"
+            stopSelf()
+            return START_NOT_STICKY
+        } catch (e: Exception) {
+            lastError = "创建麦克风录音失败：${e.javaClass.simpleName}"
+            stopSelf()
+            return START_NOT_STICKY
+        } ?: run {
+            lastError = "麦克风初始化失败"
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        startLoop(rec)
+        ReactorState.audioSource = ReactorState.SOURCE_MIC
+        return START_STICKY
+    }
+
+    // ---------------------------------------------------------------- 系统音频
+    private fun startSystemCapture(intent: Intent): Int {
         val code = intent.getIntExtra(EXTRA_CODE, 0)
         val data: Intent? = if (Build.VERSION.SDK_INT >= 33) {
             intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
@@ -100,101 +168,146 @@ class AudioCaptureService : Service() {
             intent.getParcelableExtra(EXTRA_DATA)
         }
         if (data == null) {
-            lastError = "缺少授权数据"
+            lastError = "缺少 MediaProjection 授权数据"
             stopSelf()
             return START_NOT_STICKY
         }
 
-        // ---- 1. 先拿 projection（Android 14 要求先于声明 FGS 类型）----
-        val proj = try {
-            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
-                    as MediaProjectionManager
-            mpm.getMediaProjection(code, data)
-        } catch (e: Exception) {
-            lastError = "获取 MediaProjection 失败：${e.javaClass.simpleName}"
-            null
+        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
+        // ---- 顺序 A：先拿 projection，再起前台服务 ----
+        var proj: MediaProjection? = null
+        try {
+            proj = mpm.getMediaProjection(code, data)
+        } catch (_: Exception) {
         }
+
+        var fgDone = false
+        if (proj != null) {
+            fgDone = tryStartForeground()
+            if (!fgDone) {
+                try {
+                    proj.stop()
+                } catch (_: Exception) {
+                }
+                proj = null
+            }
+        }
+
+        // ---- 顺序 B：A 失败时，先起前台服务再拿 projection ----
+        if (proj == null) {
+            if (!fgDone) fgDone = tryStartForeground()
+            try {
+                proj = mpm.getMediaProjection(code, data)
+            } catch (e: Exception) {
+                lastError = "获取系统音频失败：${e.javaClass.simpleName}"
+            }
+        }
+
         if (proj == null) {
             stopSelf()
             return START_NOT_STICKY
         }
 
-        // ---- 2. 再启动前台服务并声明 mediaProjection 类型 ----
+        releaseRecorder()
+        projection = proj
         try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                startForeground(
-                    NOTIF_ID, buildNotification(),
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-                )
-            } else {
-                startForeground(NOTIF_ID, buildNotification())
-            }
+            proj.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    lastError = "系统音频授权已被停止，需要重新授权"
+                    shutdown()
+                }
+            }, null)
+        } catch (_: Exception) {
+        }
+
+        val rec = try {
+            buildRecord(proj, -1)
+        } catch (e: SecurityException) {
+            lastError = "缺少录音权限，请在系统设置里允许"
+            stopSelf()
+            return START_NOT_STICKY
         } catch (e: Exception) {
-            lastError = "前台服务启动失败：${e.javaClass.simpleName}"
-            try {
-                proj.stop()
-            } catch (_: Exception) {
-            }
+            lastError = "创建系统音频录音失败：${e.javaClass.simpleName}"
+            stopSelf()
+            return START_NOT_STICKY
+        } ?: run {
+            lastError = "系统音频录音初始化失败（可能被其他应用占用）"
             stopSelf()
             return START_NOT_STICKY
         }
 
-        // ---- 3. 注册回调并开始采集 ----
-        releaseRecorder()
-        projection = proj
-        proj.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                // 用户在系统通知里点了「停止」，或系统回收了投射
-                lastError = "投射已被系统或用户停止，需要重新授权"
-                shutdown()
-            }
-        }, null)
-
-        startCapture()
+        startLoop(rec)
+        ReactorState.audioSource = ReactorState.SOURCE_SYSTEM
         return START_STICKY
     }
 
-    private fun startCapture() {
-        val proj = projection ?: return
-        val rec = try {
+    private fun tryStartForeground(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(
+                    NOTIF_ID, buildNotification("正在读取系统音频（不读取画面）"),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } else {
+                startForeground(NOTIF_ID, buildNotification("正在读取系统音频（不读取画面）"))
+            }
+            true
+        } catch (e: Exception) {
+            lastError = "前台服务启动失败：${e.javaClass.simpleName}"
+            false
+        }
+    }
+
+    // ---------------------------------------------------------------- 录音器构造
+    /**
+     * @param proj 非空时用 AudioPlaybackCapture（系统音频）；为空时用麦克风
+     * @param audioSource 麦克风场景的音频源
+     */
+    private fun buildRecord(proj: MediaProjection?, audioSource: Int): AudioRecord? {
+        val minBuf = AudioRecord.getMinBufferSize(
+            sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
+        ).coerceAtLeast(fftSize * 4)
+
+        val builder = AudioRecord.Builder()
+
+        if (proj != null) {
             val fmt = AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(sampleRate)
                 .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                 .build()
-
             val cfg = AudioPlaybackCaptureConfiguration.Builder(proj)
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
                 .addMatchingUsage(AudioAttributes.USAGE_GAME)
                 .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
                 .build()
-
-            val minBuf = AudioRecord.getMinBufferSize(
-                sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
-            ).coerceAtLeast(fftSize * 4)
-
-            AudioRecord.Builder()
+            builder
                 .setAudioFormat(fmt)
                 .setBufferSizeInBytes(minBuf)
                 .setAudioPlaybackCaptureConfig(cfg)
-                .build()
-        } catch (e: SecurityException) {
-            lastError = "缺少录音权限，请到系统设置里允许录音权限"
-            stopSelf()
-            return
-        } catch (e: Exception) {
-            lastError = "创建 AudioRecord 失败：${e.javaClass.simpleName}"
-            stopSelf()
-            return
+        } else {
+            builder
+                .setAudioSource(audioSource)
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(minBuf)
         }
 
+        val rec = builder.build()
         if (rec.state != AudioRecord.STATE_INITIALIZED) {
             rec.release()
-            lastError = "AudioRecord 初始化失败（可能被其他应用占用）"
-            stopSelf()
-            return
+            return null
         }
+        return rec
+    }
 
+    private fun startLoop(rec: AudioRecord) {
         record = rec
         try {
             rec.startRecording()
@@ -236,13 +349,12 @@ class AudioCaptureService : Service() {
             }
 
             if (n <= 0) {
-                // read 返回负值说明录音器已损坏，只 sleep 救不回来，必须重建
                 errorStreak++
                 if (errorStreak >= 8) {
                     errorStreak = 0
                     lastError = "录音器中断，正在重建…"
                     if (!rebuildRecorder()) {
-                        lastError = "录音器无法重建，请重新授权音频采集"
+                        lastError = "录音器无法重建，请重新开始采集"
                         break
                     }
                 }
@@ -266,8 +378,7 @@ class AudioCaptureService : Service() {
                 var sum = 0f
                 for (k in lo until hi.coerceAtMost(mag.size)) sum += mag[k]
                 val avg = sum / (hi - lo).coerceAtLeast(1)
-                // 幅值 -> dB -> 宽区间归一化（-100..0dB）。
-                // 真正的动态范围压缩交给渲染层 AGC，见 RodArray.step。
+                // 宽区间归一化（-100..0dB），动态范围压缩交给渲染层 AGC
                 val db = 20.0 * kotlin.math.log10(avg + 1e-9)
                 out[b] = ((db + 100.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
             }
@@ -282,12 +393,30 @@ class AudioCaptureService : Service() {
         ReactorState.capturing = false
     }
 
-    /** 尝试重建 AudioRecord（沿用现有 projection） */
     private fun rebuildRecorder(): Boolean {
         if (stopped) return false
         releaseRecorder()
-        startCapture()
-        return record != null
+        val rec = try {
+            if (source == ReactorState.SOURCE_SYSTEM) {
+                buildRecord(projection, -1)
+            } else {
+                buildRecord(null, MediaRecorder.AudioSource.MIC)
+            }
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        record = rec
+        return try {
+            rec.startRecording()
+            true
+        } catch (_: Exception) {
+            try {
+                rec.release()
+            } catch (_: Exception) {
+            }
+            record = null
+            false
+        }
     }
 
     private fun precomputeBands() {
@@ -315,10 +444,10 @@ class AudioCaptureService : Service() {
         }
     }
 
-    private fun buildNotification(): Notification =
+    private fun buildNotification(text: String): Notification =
         Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("控制棒")
-            .setContentText("正在读取系统音频（不读取画面）")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .build()
@@ -347,6 +476,7 @@ class AudioCaptureService : Service() {
         projection = null
         running = false
         ReactorState.capturing = false
+        ReactorState.audioSource = ReactorState.SOURCE_NONE
     }
 
     override fun onDestroy() {
