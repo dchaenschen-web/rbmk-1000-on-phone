@@ -11,15 +11,19 @@ import kotlin.math.sqrt
 /**
  * 控制棒阵列的几何与动画状态。
  *
- * 这一份是从网页版 app.js 的投影逻辑原样移植过来的，保证观感一致：
- *
+ * 几何/投影移植自网页版 app.js：
  *   rods: x,z ∈ [-15,15]，只保留 r = hypot(x,z) ≤ 15 的点（共 709 根）
  *   s   = min(W/45, H/37) * zoom
  *   屏幕坐标 = ( W/2 + rx*s , H*0.55 + rz*s*tilt - h*s )
  *
- * 与网页版的差别：
- *   * 网页用 requestAnimationFrame，这里由壁纸引擎的绘制线程按帧率驱动
- *   * 频谱来源从 Web Audio 换成 AudioPlaybackCapture + FFT
+ * 关键修正：AGC（自动增益）
+ * -------------------------
+ * 最初的移植直接用固定 dB 窗口归一化频谱，结果音乐稍响时几乎所有频段都饱和到 1.0，
+ * 709 根棒一起顶到最高 —— 表现为「全部弹出来，没有节律」。
+ *
+ * 现在每帧先求频谱峰值，再按 (v - noiseFloor) / (peak - noiseFloor) 归一化，
+ * 于是无论音乐响还是轻，频谱都会重新铺满 0..1，节律得以保留。
+ * 峰值过低（静音）时用最小跨度兜底，避免把底噪放大成满幅。
  */
 class RodArray {
 
@@ -32,7 +36,7 @@ class RodArray {
             for (z in -15..15) {
                 val r = hypot(x.toFloat(), z.toFloat())
                 if (r <= 15f) {
-                    // 用与网页版相同的伪随机种子，保证每根棒的初始高度和配色一致
+                    // 与网页版相同的伪随机种子，保证每根棒的配色/细节一致
                     val seed = kotlin.math.abs(sin(x * 127.1f + z * 311.7f))
                     add(Rod(x, z, r, seed))
                 }
@@ -40,32 +44,51 @@ class RodArray {
         }
     }
 
-    /** 单根棒的目标高度因子，0f 表示贴地 */
-    fun targetHeight(rod: Rod, bins: FloatArray, gain: Float): Float {
-        if (bins.isEmpty()) return 0.07f
-        // 网页版：hz = 45 * 320^(r/15)，再按 log 映射到我们的频段表
+    /** 取某根棒对应的频段值（按频率对数插值） */
+    private fun sample(rod: Rod, bins: FloatArray): Float {
+        if (bins.isEmpty()) return 0f
+        // 网页版：hz = 45 * 320^(r/15)
         val hz = 45.0 * 320.0.pow(rod.r / 15.0)
         val t = ((ln(hz) - ln(ReactorState.FMIN)) /
                 (ln(ReactorState.FMAX) - ln(ReactorState.FMIN))).toFloat()
-        val idx = (t * (bins.size - 1)).toInt().coerceIn(1, bins.size - 2)
-        // 取相邻三点平均，和网页版一致（更平滑）
-        val v = (bins[idx] + bins[idx - 1] + bins[idx + 1]) / 3f
-        val amp = v.coerceIn(0f, 1f).pow(1.7f) * gain
-        return 0.07f + amp * 4.8f
+        val pos = (t * (bins.size - 1)).coerceIn(0f, (bins.size - 1).toFloat())
+        val i0 = pos.toInt()
+        val i1 = (i0 + 1).coerceAtMost(bins.size - 1)
+        val f = pos - i0
+        return bins[i0] * (1f - f) + bins[i1] * f
     }
 
-    /** 每帧推进一次高度（带平滑） */
-    fun step(bins: FloatArray, gain: Float, dtScale: Float, smoothing: Float) {
+    /** 每帧推进一次高度（含 AGC 与时间平滑） */
+    fun step(bins: FloatArray, dtScale: Float) {
+        val floor = ReactorState.noiseFloor
+        val gamma = ReactorState.gamma
+        val gain = ReactorState.sensitivity
+        val baseH = ReactorState.baseHeight
+        val maxH = ReactorState.maxHeight
+        val smoothing = ReactorState.smoothing
+
+        // AGC：以本帧峰值为参考，保证频谱始终铺满动态范围
+        var peak = 0f
+        for (b in bins) if (b > peak) peak = b
+        if (peak < 0.05f) peak = 0.05f
+        val span = (peak - floor).coerceAtLeast(0.05f)
+
+        // 每帧只算一次的平滑系数
+        val k = (1.0 - (0.45 + smoothing * 0.53).pow(dtScale.toDouble()))
+            .toFloat().coerceIn(0.01f, 0.95f)
+
         for (rod in rods) {
-            val target = targetHeight(rod, bins, gain)
-            // 网页版：rod.h += (target - rod.h) * (1 - 0.45+smoothing*0.53 ^ dt)
-            val k = (1.0 - (0.45 + smoothing * 0.53).pow(dtScale.toDouble())).toFloat()
-                .coerceIn(0.01f, 0.9f)
+            val v = sample(rod, bins)
+            var a = ((v - floor) / span).coerceIn(0f, 1f)
+            a = a.pow(gamma) * gain
+            // 允许一点过冲，但不要无限放大
+            a = a.coerceIn(0f, 1.8f)
+            val target = baseH + a * maxH
             rod.h += (target - rod.h) * k
         }
     }
 
-    /** 屏幕空间缩放系数，用于画外圈、帽盖等细节尺寸 */
+    /** 屏幕空间缩放系数 */
     fun scale(w: Float, h: Float, zoom: Float): Float =
         min(w / 45f, h / 37f) * zoom
 

@@ -182,14 +182,18 @@ class AudioCaptureService : Service() {
                 var sum = 0f
                 for (k in lo until hi.coerceAtMost(mag.size)) sum += mag[k]
                 val avg = sum / (hi - lo).coerceAtLeast(1)
-                // 幅值 -> dB -> 归一化（-85..-20dB 映射到 0..1，与桌面版一致）
+                // 幅值 -> dB -> 归一化。
+                // 这里故意用**很宽**的区间（-100..0dB），只做粗归一化，
+                // 保证音量大时不会所有频段一起饱和 —— 真正的动态范围压缩
+                // 交给渲染层的 AGC（见 RodArray.step）。
                 val db = 20.0 * kotlin.math.log10(avg + 1e-9)
-                out[b] = ((db + 85.0) / 65.0).coerceIn(0.0, 1.0).toFloat()
+                out[b] = ((db + 100.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
             }
 
-            // 时间平滑
+            // 采集层只做轻平滑（防止逐帧跳变），
+            // 用户可调的「平滑度」在渲染层再叠一次
             for (b in 0 until binCount) {
-                smoothed[b] = smoothed[b] * 0.55f + out[b] * 0.45f
+                smoothed[b] = smoothed[b] * 0.35f + out[b] * 0.65f
             }
             ReactorState.spectrum = smoothed.copyOf()
         }

@@ -6,12 +6,12 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
+import android.graphics.Typeface
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -23,14 +23,14 @@ import android.widget.TextView
 import android.widget.Toast
 
 /**
- * 设置 / 授权 / 预览界面。
+ * 设置 / 授权 / 参数调试界面。
  *
  * 三件必须由用户手动完成的事（Android 权限设计决定，App 无法代劳）：
  *   1. MediaProjection 授权 —— 才能用 AudioPlaybackCapture 采集系统音频
  *   2. 通知使用权 —— 才能读到别的 App 正在播的歌名
  *   3. 设为动态壁纸 —— 系统壁纸选择器
  *
- * UI 全部用代码搭，不引 AndroidX，减少构建依赖。
+ * 所有渲染参数都可实时调整，方便按喜好调。
  */
 class MainActivity : Activity() {
 
@@ -49,7 +49,7 @@ class MainActivity : Activity() {
         prefs = getSharedPreferences("reactor", MODE_PRIVATE)
         loadConfig()
         setContentView(buildUi())
-        requestNotificationPermissionIfNeeded()
+        requestRuntimePermissions()
     }
 
     override fun onResume() {
@@ -59,17 +59,20 @@ class MainActivity : Activity() {
 
     // ---------------------------------------------------------------- 配置
     private fun loadConfig() {
-        ReactorState.sensitivity = prefs.getFloat("sensitivity", 1.4f)
-        ReactorState.smoothing = prefs.getFloat("smoothing", 0.75f)
+        for (p in ReactorState.PARAMS) {
+            ReactorState.apply(p.key, prefs.getFloat(p.key, p.def))
+        }
         ReactorState.showTitle = prefs.getBoolean("show_title", true)
     }
 
-    private fun saveConfig() {
-        prefs.edit()
-            .putFloat("sensitivity", ReactorState.sensitivity)
-            .putFloat("smoothing", ReactorState.smoothing)
-            .putBoolean("show_title", ReactorState.showTitle)
-            .apply()
+    private fun saveParam(key: String, value: Float) {
+        prefs.edit().putFloat(key, value).apply()
+    }
+
+    private fun resetDefaults() {
+        prefs.edit().clear().apply()
+        loadConfig()
+        recreate()
     }
 
     // ---------------------------------------------------------------- UI
@@ -77,63 +80,63 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(28))
+            setPadding(dp(20), dp(28), dp(20), dp(36))
             setBackgroundColor(Color.parseColor("#0a0d0b"))
         }
         scroll.addView(root)
 
         root.addView(label("RBMK-1000 控制棒", 26f, Color.parseColor("#e6ece0"), bold = true))
-        root.addView(
-            label(
-                "动态壁纸 · 跟随正在播放的音乐",
-                14f, Color.parseColor("#8e998a")
-            )
-        )
-        root.addView(spacer(20))
+        root.addView(label("动态壁纸 · 跟随正在播放的音乐", 14f, Color.parseColor("#8e998a")))
+        root.addView(spacer(dp(16)))
 
         statusText = label("", 14f, Color.parseColor("#c9d1c9"))
         root.addView(statusText)
-        root.addView(spacer(20))
+        root.addView(spacer(dp(16)))
 
-        // 1. 音频授权
-        root.addView(sectionTitle("1. 音频采集（AudioPlaybackCapture）"))
+        // ============ 1. 音频授权 ============
+        root.addView(sectionTitle("1. 音频采集"))
         projectionBtn = button("授权采集系统音频") { requestProjection() }
         root.addView(projectionBtn)
         root.addView(
-            hint("授权一次即可；手机重启或系统回收后需要重新授权。")
+            hint(
+                "为什么需要「录制屏幕」授权？\n" +
+                        "Android 把「采集本机播放的声音」绑在 MediaProjection（媒体投射）接口上，" +
+                        "系统的授权框统一写成「录制或投射屏幕」。\n" +
+                        "本应用只使用其中的音频通道：不读取画面、不录屏、不保存、不上传。"
+            )
         )
-        root.addView(spacer(20))
+        root.addView(spacer(dp(16)))
 
-        // 2. 歌名授权
+        // ============ 2. 歌名 ============
         root.addView(sectionTitle("2. 读取正在播放的歌名"))
         notifBtn = button("打开通知使用权设置") { openNotificationAccess() }
         root.addView(notifBtn)
-        root.addView(hint("在列表里找到「RBMK-1000」并打开。没有授权只是不显示歌名，不影响其他功能。"))
-        root.addView(spacer(20))
+        root.addView(hint("在列表里找到「RBMK-1000」并打开。未授权只是不显示歌名，不影响其他功能。"))
+        root.addView(spacer(dp(16)))
 
-        // 3. 壁纸
-        root.addView(sectionTitle("3. 设为动态壁纸"))
-        root.addView(button("选择动态壁纸") { setLiveWallpaper() })
+        // ============ 3. 壁纸 ============
+        root.addView(sectionTitle("3. 壁纸"))
+        root.addView(button("设为动态壁纸") { setLiveWallpaper() })
         root.addView(button("选择背景图（可选）") { pickBackground() })
         root.addView(button("清除背景图") {
             prefs.edit().putString("background_uri", "").apply()
             Toast.makeText(this, "已清除，壁纸会变纯黑底", Toast.LENGTH_SHORT).show()
         })
-        root.addView(hint("动态壁纸会取代原壁纸；选一张自己的图当背景，控制棒就会浮在它上面。"))
-        root.addView(spacer(20))
+        root.addView(button("还原为普通壁纸") { restoreStaticWallpaper() })
+        root.addView(
+            hint(
+                "动态壁纸会取代原来的静态壁纸。想换回去点「还原为普通壁纸」，" +
+                        "再挑一张图即可 —— 系统不会保存原来的壁纸，所以需要重新选。"
+            )
+        )
+        root.addView(spacer(dp(16)))
 
-        // 4. 参数
-        root.addView(sectionTitle("4. 参数"))
-        root.addView(
-            slider("灵敏度", 0.3f, 3f, ReactorState.sensitivity) {
-                ReactorState.sensitivity = it
-                saveConfig()
-            })
-        root.addView(
-            slider("平滑度", 0f, 0.95f, ReactorState.smoothing) {
-                ReactorState.smoothing = it
-                saveConfig()
-            })
+        // ============ 4. 参数调试 ============
+        root.addView(sectionTitle("4. 参数调试（实时生效）"))
+        root.addView(hint("调整后动态壁纸立刻变化，不需要重新应用。"))
+        for (p in ReactorState.PARAMS) {
+            root.addView(slider(p))
+        }
 
         val sw = Switch(this).apply {
             text = "显示歌名"
@@ -142,20 +145,25 @@ class MainActivity : Activity() {
             isChecked = ReactorState.showTitle
             setOnCheckedChangeListener { _, checked ->
                 ReactorState.showTitle = checked
-                saveConfig()
+                prefs.edit().putBoolean("show_title", checked).apply()
             }
         }
-        root.addView(sw, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(12) })
-        root.addView(spacer(24))
+        root.addView(
+            sw, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) }
+        )
 
-        // 5. 关于
+        root.addView(button("恢复默认参数") { resetDefaults() })
+        root.addView(spacer(dp(24)))
+
+        // ============ 5. 关于 ============
         root.addView(sectionTitle("关于"))
         root.addView(button("开源许可") {
             startActivity(Intent(this, LicensesActivity::class.java))
         })
-        root.addView(hint("基于 Andy Wang 的 reactor-audio-visualizer（MIT 许可证）。"))
+        root.addView(hint("基于 Andy Wang 的 reactor-audio-visualizer（MIT 许可证）的 Android 移植。"))
 
         return scroll
     }
@@ -165,7 +173,7 @@ class MainActivity : Activity() {
             this.text = text
             textSize = size
             setTextColor(color)
-            if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            if (bold) setTypeface(typeface, Typeface.BOLD)
             setPadding(0, dp(4), 0, dp(4))
         }
 
@@ -187,28 +195,38 @@ class MainActivity : Activity() {
             textSize = 15f
             setOnClickListener { onClick() }
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(8) }
         }
 
-    private fun slider(
-        name: String, min: Float, max: Float, initial: Float,
-        onChange: (Float) -> Unit,
-    ): View {
+    private fun slider(p: ReactorState.Param): View {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(10), 0, 0)
         }
-        val valueText = label("$name：${"%.2f".format(initial)}", 14f, Color.parseColor("#c9d1c9"))
+        val initial = ReactorState.value(p.key)
+        val fmt = "%." + p.digits + "f"
+        val valueText = label(
+            "${p.label}：${fmt.format(initial)}",
+            14f, Color.parseColor("#c9d1c9")
+        )
         box.addView(valueText)
+        if (p.hint.isNotEmpty()) {
+            box.addView(label(p.hint, 11f, Color.parseColor("#6b7568")))
+        }
+
         val sb = SeekBar(this).apply {
-            this.max = 100
-            progress = (((initial - min) / (max - min)) * 100).toInt().coerceIn(0, 100)
+            max = 1000
+            progress = (((initial - p.min) / (p.max - p.min)) * 1000).toInt().coerceIn(0, 1000)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                    val v = min + (max - min) * p / 100f
-                    valueText.text = "$name：${"%.2f".format(v)}"
-                    if (fromUser) onChange(v)
+                override fun onProgressChanged(sb: SeekBar?, prog: Int, fromUser: Boolean) {
+                    val v = p.min + (p.max - p.min) * prog / 1000f
+                    valueText.text = "${p.label}：${fmt.format(v)}"
+                    if (fromUser) {
+                        ReactorState.apply(p.key, v)
+                        saveParam(p.key, v)
+                    }
                 }
 
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -230,8 +248,7 @@ class MainActivity : Activity() {
         projectionBtn.text =
             if (AudioCaptureService.running) "重新授权采集系统音频" else "授权采集系统音频"
         notifBtn.text =
-            if (hasNotificationAccess()) "通知使用权（已开启，可再次进入调整）"
-            else "打开通知使用权设置"
+            if (hasNotificationAccess()) "通知使用权（已开启）" else "打开通知使用权设置"
     }
 
     private fun hasNotificationAccess(): Boolean {
@@ -263,13 +280,15 @@ class MainActivity : Activity() {
             val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
                 putExtra(
                     WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                    // 注意：这里在 Intent.apply {} 内部，this 是 Intent 而不是 Activity
-                    ComponentName(this@MainActivity, ReactorWallpaperService::class.java)
+                    // 这里在 Intent.apply {} 内部，this 是 Intent 而不是 Activity
+                    ComponentName(
+                        this@MainActivity,
+                        ReactorWallpaperService::class.java
+                    )
                 )
             }
             startActivity(intent)
-        } catch (e: Exception) {
-            // 部分机型没有直接入口，退回通用壁纸设置
+        } catch (_: Exception) {
             try {
                 startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER))
             } catch (_: Exception) {
@@ -278,12 +297,27 @@ class MainActivity : Activity() {
         }
     }
 
+    /** 打开系统静态壁纸选择器，用来把动态壁纸换回普通壁纸 */
+    private fun restoreStaticWallpaper() {
+        try {
+            startActivity(Intent(WallpaperManager.ACTION_CHANGE_WALLPAPER))
+        } catch (_: Exception) {
+            Toast.makeText(
+                this,
+                "请到 设置 → 壁纸和风格 里重新选择一张壁纸",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     private fun pickBackground() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "image/*"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
         }
         startActivityForResult(intent, REQ_BACKGROUND)
     }
@@ -318,15 +352,12 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= 33) {
-            try {
-                requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 2001)
-            } catch (_: Exception) {
-            }
-        }
+    private fun requestRuntimePermissions() {
+        val need = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 33) need += "android.permission.POST_NOTIFICATIONS"
+        need += android.Manifest.permission.RECORD_AUDIO
         try {
-            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 2002)
+            requestPermissions(need.toTypedArray(), 2001)
         } catch (_: Exception) {
         }
     }

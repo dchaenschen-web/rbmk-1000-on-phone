@@ -11,10 +11,12 @@ import kotlin.math.sin
 /**
  * 把 RodArray 画到 Canvas 上。
  *
- * 配色是从桌面版移植的「金属色」方案：
+ * 配色是桌面版的「金属色」方案：
  *   顶面按 seed 分三档 —— 红棕 / 蓝绿 / 金属银（红棕与蓝绿保持原样）
  *   侧面与顶盖用钢灰系
  *   外圈是原版的装饰环
+ *
+ * 所有视角与强度参数都从 ReactorState 读，可在设置界面实时调整。
  */
 class ReactorRenderer {
 
@@ -32,45 +34,52 @@ class ReactorRenderer {
     }
     private val path = Path()
 
-    // 视角参数（和网页版默认一致）
-    private val angle = -0.32f
-    private val tilt = 0.58f
-    private val zoom = 1f
-
     private var lastFrameNanos = 0L
 
-    /** 每帧调用；返回是否需要继续绘制 */
+    /** 每帧调用 */
     fun draw(canvas: Canvas, width: Float, height: Float, nowNanos: Long) {
         val dt = if (lastFrameNanos == 0L) 1f else
             ((nowNanos - lastFrameNanos) / 16_666_667f).coerceIn(0.2f, 3f)
         lastFrameNanos = nowNanos
 
         val bins = ReactorState.spectrum
-        rods.step(bins, ReactorState.sensitivity, dt, ReactorState.smoothing)
+        rods.step(bins, dt)
 
         canvas.drawColor(Color.TRANSPARENT)
 
-        drawRings(canvas, width, height)
-        drawRods(canvas, width, height)
+        val angle = Math.toRadians(ReactorState.angleDeg.toDouble()).toFloat()
+        val tilt = ReactorState.tilt
+        val zoom = ReactorState.zoom
+
+        drawRings(canvas, width, height, angle, tilt, zoom)
+        drawRods(canvas, width, height, angle, tilt, zoom)
         if (ReactorState.showTitle) drawTitle(canvas, width, height)
     }
 
     // ---------------------------------------------------------------- 外圈
-    private fun drawRings(canvas: Canvas, w: Float, h: Float) {
+    private fun drawRings(
+        canvas: Canvas, w: Float, h: Float,
+        angle: Float, tilt: Float, zoom: Float,
+    ) {
+        val unit = rods.scale(w, h, zoom) / 15f
+
         strokePaint.color = Color.parseColor("#060b07")
-        strokePaint.strokeWidth = 20f * rods.scale(w, h, zoom) / 15f
-        circle(canvas, 16.4f, w, h)
+        strokePaint.strokeWidth = (20f * unit).coerceAtLeast(2f)
+        circle(canvas, 16.4f, w, h, angle, tilt, zoom)
 
         strokePaint.color = Color.parseColor("#505948")
         strokePaint.strokeWidth = 2f
-        circle(canvas, 16.5f, w, h)
+        circle(canvas, 16.5f, w, h, angle, tilt, zoom)
 
         strokePaint.color = Color.parseColor("#878969")
         strokePaint.strokeWidth = 1f
-        circle(canvas, 16f, w, h)
+        circle(canvas, 16f, w, h, angle, tilt, zoom)
     }
 
-    private fun circle(canvas: Canvas, r: Float, w: Float, h: Float) {
+    private fun circle(
+        canvas: Canvas, r: Float, w: Float, h: Float,
+        angle: Float, tilt: Float, zoom: Float,
+    ) {
         path.reset()
         val steps = 120
         for (i in 0..steps) {
@@ -84,12 +93,15 @@ class ReactorRenderer {
     }
 
     // ---------------------------------------------------------------- 控制棒
-    private fun drawRods(canvas: Canvas, w: Float, h: Float) {
-        // 按 rz 从远到近排序，保证遮挡关系正确
-        val sorted = rods.rods.sortedBy { r ->
-            val rz = r.x * sin(angle) + r.z * cos(angle)
-            rz
-        }
+    private fun drawRods(
+        canvas: Canvas, w: Float, h: Float,
+        angle: Float, tilt: Float, zoom: Float,
+    ) {
+        // 按 rz 从远到近排序，保证遮挡正确
+        val sorted = rods.rods.sortedBy { r -> r.x * sin(angle) + r.z * cos(angle) }
+
+        val baseH = ReactorState.baseHeight
+        val maxH = ReactorState.maxHeight.coerceAtLeast(0.1f)
 
         for (rod in sorted) {
             val hh = rod.h
@@ -102,18 +114,22 @@ class ReactorRenderer {
             val c0 = rods.project(rod.x + .44f, rod.z + .44f, 0f, w, h, angle, tilt, zoom)
             val d0 = rods.project(rod.x - .44f, rod.z + .44f, 0f, w, h, angle, tilt, zoom)
 
-            // amp 用于侧面随音量变亮（和网页版一致）
-            val amp = ((hh - 0.07f) / 4.8f).coerceIn(0f, 1f)
+            // 用当前高度反推振幅，做侧面亮度变化
+            val amp = ((hh - baseH) / maxH).coerceIn(0f, 1f)
 
             quad(canvas, a, a0, b0, b, Color.parseColor("#4e565e"))
             quad(
                 canvas, b, b0, c0, c,
-                Color.rgb(72 + (amp * 34).toInt(), 78 + (amp * 34).toInt(), 86 + (amp * 34).toInt())
+                Color.rgb(
+                    72 + (amp * 34).toInt(),
+                    78 + (amp * 34).toInt(),
+                    86 + (amp * 34).toInt()
+                )
             )
             quad(canvas, c, c0, d0, d, Color.parseColor("#3b434b"))
             quad(canvas, d, d0, a0, a, Color.parseColor("#454d55"))
 
-            // 顶面：保持红棕 / 蓝绿两档，其余是金属银
+            // 顶面：保留红棕 / 蓝绿两档，其余金属银
             val base: IntArray = when {
                 rod.seed > .92f -> intArrayOf(143, 109, 81)
                 rod.seed > .85f -> intArrayOf(97, 118, 104)
@@ -142,8 +158,10 @@ class ReactorRenderer {
             )
             if (s > 13 && rod.seed > .6f) {
                 paint.color = Color.parseColor("#eef2f6")
-                canvas.drawRect(p[0] - s * .3f, p[1] - s * .19f, p[0] - s * .3f + 1.5f,
-                    p[1] - s * .19f + 1.5f, paint)
+                canvas.drawRect(
+                    p[0] - s * .3f, p[1] - s * .19f,
+                    p[0] - s * .3f + 1.5f, p[1] - s * .19f + 1.5f, paint
+                )
             }
         }
     }
