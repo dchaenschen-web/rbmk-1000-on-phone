@@ -99,15 +99,24 @@ class RodArray {
             return
         }
 
+        var ampSum = 0f
         for (rod in rods) {
             val v = sample(rod, bins)
             var a = ((v - floor) / span).coerceIn(0f, 1f)
             a = a.pow(gamma) * gain
-            // 允许一点过冲，但不要无限放大
-            a = a.coerceIn(0f, 1.8f)
+            // 上限就是 1.0：这样「最大高度」才是真正的天花板。
+            // 之前允许到 1.8，导致大部分棒子长期顶在上限，
+            // 再调灵敏度看不出任何变化。
+            a = a.coerceIn(0f, 1f)
+            ampSum += a
             val target = baseH + a * maxH
             rod.h += (target - rod.h) * k
         }
+
+        // 供设置页显示，便于确认参数是否真的生效
+        ReactorState.dbgPeak = peak
+        ReactorState.dbgAgc = agcPeak
+        ReactorState.dbgAvgAmp = ampSum / rods.size
     }
 
     /** 屏幕空间缩放系数 */

@@ -93,6 +93,14 @@ object ReactorState {
     @Volatile
     var lowShelf: Float = 0f
 
+    // ---- 调试读数（设置页展示，用于确认参数是否生效）----
+    @Volatile
+    var dbgPeak: Float = 0f
+    @Volatile
+    var dbgAgc: Float = 0f
+    @Volatile
+    var dbgAvgAmp: Float = 0f
+
     /** 是否显示歌名浮层 */
     @Volatile
     var showTitle: Boolean = true

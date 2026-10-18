@@ -11,6 +11,8 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
@@ -44,6 +46,22 @@ class MainActivity : Activity() {
     private lateinit var projectionBtn: Button
     private lateinit var notifBtn: Button
     private var previewView: PreviewView? = null
+    private var debugText: TextView? = null
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val debugTicker = object : Runnable {
+        override fun run() {
+            val t = debugText
+            if (t != null) {
+                t.text = "峰值 %.2f    AGC %.2f    平均振幅 %.2f    灵敏度 %.2f".format(
+                    ReactorState.dbgPeak,
+                    ReactorState.dbgAgc,
+                    ReactorState.dbgAvgAmp,
+                    ReactorState.sensitivity
+                )
+            }
+            uiHandler.postDelayed(this, 400)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,14 +74,18 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        uiHandler.post(debugTicker)
+    }
+
+    override fun onPause() {
+        uiHandler.removeCallbacks(debugTicker)
+        super.onPause()
     }
 
     // ---------------------------------------------------------------- 配置
     private fun loadConfig() {
-        for (p in ReactorState.PARAMS) {
-            ReactorState.apply(p.key, prefs.getFloat(p.key, p.def))
-        }
-        ReactorState.showTitle = prefs.getBoolean("show_title", true)
+        // 统一由 ReactorConfig 载入，壁纸服务启动时也走同一份逻辑
+        ReactorConfig.load(this)
     }
 
     /** 保存预览里拖动/缩放得到的几何参数 */
@@ -183,6 +205,10 @@ class MainActivity : Activity() {
                 "调「频率倾斜 / 低频增减」时，直接看下面这条线的形状。"
             )
         )
+        debugText = label("", 12f, Color.parseColor("#9aa596")).apply {
+            typeface = Typeface.MONOSPACE
+        }
+        root.addView(debugText)
         for (p in ReactorState.PARAMS) {
             root.addView(slider(p))
         }

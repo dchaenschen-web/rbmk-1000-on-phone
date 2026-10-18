@@ -43,8 +43,12 @@ class ReactorWallpaperService : WallpaperService() {
 
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             super.onCreate(surfaceHolder)
-            // 从设置里读背景图
-            mainHandler.post { loadBackgroundFromPrefs() }
+            // 关键：壁纸可能在用户从未打开设置页的情况下启动，
+            // 必须自己把保存的参数载入内存，否则会一直用默认值。
+            mainHandler.post {
+                ReactorConfig.load(this@ReactorWallpaperService)
+                loadBackgroundFromPrefs()
+            }
         }
 
         override fun onVisibilityChanged(isVisible: Boolean) {
