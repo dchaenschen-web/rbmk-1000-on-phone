@@ -170,8 +170,19 @@ class MainActivity : Activity() {
         root.addView(spacer(dp(16)))
 
         // ============ 4. 参数调试 ============
-        root.addView(sectionTitle("4. 参数调试（实时生效）"))
-        root.addView(hint("调整后动态壁纸立刻变化，不需要重新应用。"))
+        root.addView(sectionTitle("4. 频谱可视化 + 参数调试"))
+        root.addView(hint("调整后立刻生效，不需要重新应用壁纸。"))
+        root.addView(
+            SpectrumView(this), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(200)
+            )
+        )
+        root.addView(
+            hint(
+                "上图：当前频谱（256 段）。下图：你的频率参数产生的增益曲线（±24dB）。\n" +
+                "调「频率倾斜 / 低频增减」时，直接看下面这条线的形状。"
+            )
+        )
         for (p in ReactorState.PARAMS) {
             root.addView(slider(p))
         }

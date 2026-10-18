@@ -16,8 +16,6 @@ import android.os.Build
 import android.os.IBinder
 import kotlin.math.cos
 import kotlin.math.log10
-import kotlin.math.pow
-import kotlin.math.sqrt
 
 /**
  * 用 AudioPlaybackCapture 采集「本机正在播放的声音」并实时算频谱。
@@ -85,14 +83,11 @@ class AudioCaptureService : Service() {
     private val sampleRate = 48000
     private val binCount = ReactorState.BINS
 
-    private val bandLo = IntArray(binCount)
-    private val bandHi = IntArray(binCount)
-    private val bandGain = FloatArray(binCount)
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        precomputeBands()
+        SpectrumBands.ensure(sampleRate, fftSize)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -274,7 +269,7 @@ class AudioCaptureService : Service() {
 
         while (!stopped) {
             // 用户改了频率参数就重算频段表（比较很便宜）
-            ensureBands()
+            SpectrumBands.ensure(sampleRate, fftSize)
 
             val rec = record
             if (rec == null) break
@@ -310,14 +305,14 @@ class AudioCaptureService : Service() {
 
             val out = FloatArray(binCount)
             for (b in 0 until binCount) {
-                val lo = bandLo[b]
-                val hi = bandHi[b].coerceAtLeast(lo + 1)
+                val lo = SpectrumBands.lo[b]
+                val hi = SpectrumBands.hi[b].coerceAtLeast(lo + 1)
                 var sum = 0f
                 for (k in lo until hi.coerceAtMost(mag.size)) sum += mag[k]
                 val avg = sum / (hi - lo).coerceAtLeast(1)
 
                 // 1) dB 化 + 频率倾斜补偿（+3dB/oct，以 1kHz 为基准）
-                val db = 20.0 * log10(avg + 1e-9) + 20.0 * log10(bandGain[b].toDouble())
+                val db = 20.0 * log10(avg + 1e-9) + 20.0 * log10(SpectrumBands.gain[b].toDouble())
 
                 // 2) 粗归一化到 0..1（宽区间，保留动态范围）
                 val raw = ((db + 100.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
@@ -364,54 +359,6 @@ class AudioCaptureService : Service() {
             }
             record = null
             false
-        }
-    }
-
-    // 参数缓存：用户改了频率参数才重算频段表
-    private var cachedTilt = Float.NaN
-    private var cachedShelf = Float.NaN
-    private var cachedLow = Float.NaN
-    private var cachedHigh = Float.NaN
-
-    /** 频率参数变化时重算频段划分与增益 */
-    private fun ensureBands() {
-        if (cachedTilt == ReactorState.freqTilt &&
-            cachedShelf == ReactorState.lowShelf &&
-            cachedLow == ReactorState.fmin &&
-            cachedHigh == ReactorState.fmax
-        ) {
-            return
-        }
-        cachedTilt = ReactorState.freqTilt
-        cachedShelf = ReactorState.lowShelf
-        cachedLow = ReactorState.fmin
-        cachedHigh = ReactorState.fmax
-        precomputeBands()
-    }
-
-    private fun precomputeBands() {
-        val freqsPerBin = sampleRate.toDouble() / fftSize
-        val half = fftSize / 2
-        val low = ReactorState.fmin.toDouble().coerceIn(20.0, 1000.0)
-        val high = ReactorState.fmax.toDouble().coerceIn(low * 4.0, 20000.0)
-        val tilt = ReactorState.freqTilt.toDouble()
-        val shelf = ReactorState.lowShelf.toDouble()
-
-        for (b in 0 until binCount) {
-            val f0 = low * (high / low).pow(b.toDouble() / binCount)
-            val f1 = low * (high / low).pow((b + 1).toDouble() / binCount)
-            bandLo[b] = (f0 / freqsPerBin).toInt().coerceIn(1, half - 1)
-            bandHi[b] = (f1 / freqsPerBin).toInt().coerceIn(bandLo[b] + 1, half)
-
-            val fc = sqrt(f0 * f1)
-            // 倾斜：以 1kHz 为基准，dB = tilt * log2(fc / 1000)
-            var gainDb = tilt * (kotlin.math.ln(fc / 1000.0) / kotlin.math.ln(2.0))
-            // 低频搁架：250Hz 以下线性叠加，约 20Hz 处取满值
-            if (fc < 250.0) {
-                val w = ((250.0 - fc) / 230.0).coerceIn(0.0, 1.0)
-                gainDb += shelf * w
-            }
-            bandGain[b] = 10.0.pow(gainDb / 20.0).coerceIn(0.02, 12.0).toFloat()
         }
     }
 
