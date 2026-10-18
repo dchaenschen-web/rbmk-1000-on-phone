@@ -138,7 +138,7 @@ object RodGroups {
         }
         ReactorState.manualGroups = sb.toString()
         ReactorState.manualRev++
-        cachedManualStr = "
+        cachedManualStr = ""
     }
 
     /** 清空手动分组（全部归到组 0） */

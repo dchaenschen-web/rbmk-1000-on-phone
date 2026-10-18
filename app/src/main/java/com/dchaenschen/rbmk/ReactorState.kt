@@ -31,8 +31,8 @@ object ReactorState {
     const val SOURCE_NONE = "none"
 
     // 预览比例
-    const val ASPECT_OUTER = outer
-    const val ASPECT_INNER = inner
+    const val ASPECT_OUTER = "outer"
+    const val ASPECT_INNER = "inner"
 
     // 控制棒分组方式
     const val GROUP_RANDOM = "random"     // 原项目的随机分组
