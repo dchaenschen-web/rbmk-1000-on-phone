@@ -119,20 +119,30 @@ class MainActivity : Activity() {
 
         root.addView(label("RBMK-1000 控制棒", 26f, Color.parseColor("#e6ece0"), bold = true))
         root.addView(label("动态壁纸 · 跟随正在播放的音乐", 14f, Color.parseColor("#8e998a")))
-        root.addView(spacer(dp(16)))
+        root.addView(spacer(dp(12)))
 
         statusText = label("", 14f, Color.parseColor("#c9d1c9"))
         root.addView(statusText)
-        root.addView(spacer(dp(16)))
+        root.addView(spacer(dp(20)))
 
-        // ============ 预览：调整位置和大小 ============
-        root.addView(sectionTitle("预览 · 调整位置和大小"))
+        // ============================================================
+        // 一、控制棒（预览 + 频谱 + 参数，全部放在一起）
+        // ============================================================
+        root.addView(sectionTitle("一、控制棒"))
+
+        // ---------------- 预览 ----------------
+        root.addView(
+            label(
+                "预览 · 单指拖动改位置，双指捏合改大小",
+                14f, Color.parseColor("#c9d1c9")
+            )
+        )
         val preview = PreviewView(this)
         previewView = preview
         preview.onChanged = { saveGeometry() }
 
-        // 用 FrameLayout 居中：预览必须保持目标屏幕的长宽比，
-        // 所以它的宽度可能小于屏幕宽度（竖屏比例时会缩窄）。
+        // FrameLayout 居中：预览要保持目标屏幕的长宽比，
+        // 竖屏比例时宽度会小于屏幕宽。
         val previewFrame = android.widget.FrameLayout(this)
         previewFrame.addView(
             preview,
@@ -164,86 +174,39 @@ class MainActivity : Activity() {
             ).show()
         })
 
-        root.addView(
-            hint(
-                "单指拖动 = 移动位置　双指捏合 = 缩放。\n" +
-                "预览按目标屏幕的比例绘制（可用上面的按钮切换内屏/外屏），" +
-                "所以这里调出来的位置和大小会与壁纸一致。"
-            )
-        )
-        root.addView(button("重置位置和大小") {
+        val resetBtn = button("重置位置和大小") {
             ReactorState.offsetX = 0f
             ReactorState.offsetY = 0f
             ReactorState.zoom = 1f
             saveGeometry()
             Toast.makeText(this, "已重置", Toast.LENGTH_SHORT).show()
-        })
-        root.addView(spacer(dp(16)))
+        }
+        root.addView(resetBtn)
+        root.addView(spacer(dp(14)))
 
-        // ============ 1. 音频来源 ============
-        root.addView(sectionTitle("1. 系统音频采集"))
-        projectionBtn = button("系统音频 · 精确（需一次录屏授权）") { requestProjection() }
-        root.addView(projectionBtn)
-        root.addView(button("停止采集") {
-            AudioCaptureService.stop(this)
-            ReactorState.audioSource = ReactorState.SOURCE_NONE
-            Toast.makeText(this, "已停止采集", Toast.LENGTH_SHORT).show()
-        })
+        // ---------------- 频谱 ----------------
         root.addView(
-            hint(
-                "Android 把「采集本机播放的音频」绑在 MediaProjection 上，" +
-                        "所以会弹「录制或投射屏幕」授权框。\n" +
-                        "本应用只使用其中的音频通道：不读取画面、不录屏、不保存、不上传。\n" +
-                        "授权是会话级的：手机重启或进程被杀之后需要重新点一次授权。"
+            label(
+                "频谱 · 上：实时频谱　下：频率增益曲线",
+                14f, Color.parseColor("#c9d1c9")
             )
         )
-        root.addView(button("允许后台运行（防被杀）") { requestBatteryExemption() })
-        root.addView(hint("三星会清理后台应用导致采集中断，加入白名单可显著减少。"))
-        root.addView(spacer(dp(16)))
-
-        // ============ 2. 歌名 ============
-        root.addView(sectionTitle("2. 读取正在播放的歌名"))
-        notifBtn = button("打开通知使用权设置") { openNotificationAccess() }
-        root.addView(notifBtn)
-        root.addView(hint("在列表里找到「RBMK-1000」并打开。未授权只是不显示歌名，不影响其他功能。"))
-        root.addView(spacer(dp(16)))
-
-        // ============ 3. 壁纸 ============
-        root.addView(sectionTitle("3. 壁纸"))
-        root.addView(button("设为动态壁纸") { setLiveWallpaper() })
-        root.addView(button("选择背景图（可选）") { pickBackground() })
-        root.addView(button("清除背景图") {
-            prefs.edit().putString("background_uri", "").apply()
-            previewView?.reloadBackground()
-            Toast.makeText(this, "已清除，壁纸会变纯黑底", Toast.LENGTH_SHORT).show()
-        })
-        root.addView(button("还原为普通壁纸") { restoreStaticWallpaper() })
-        root.addView(
-            hint(
-                "动态壁纸会取代原来的静态壁纸。想换回去点「还原为普通壁纸」，" +
-                        "再挑一张图即可 —— 系统不会保存原来的壁纸，所以需要重新选。"
-            )
-        )
-        root.addView(spacer(dp(16)))
-
-        // ============ 4. 参数调试 ============
-        root.addView(sectionTitle("4. 频谱可视化 + 参数调试"))
-        root.addView(hint("调整后立刻生效，不需要重新应用壁纸。"))
         root.addView(
             SpectrumView(this), LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(200)
             )
         )
         root.addView(
-            hint(
-                "上图：当前频谱（256 段）。下图：你的频率参数产生的增益曲线（±24dB）。\n" +
-                "调「频率倾斜 / 低频增减」时，直接看下面这条线的形状。"
-            )
+            hint("调「频率倾斜 / 低频增减」时，直接看下面这条增益曲线的形状。")
         )
         debugText = label("", 12f, Color.parseColor("#9aa596")).apply {
             typeface = Typeface.MONOSPACE
         }
         root.addView(debugText)
+        root.addView(spacer(dp(14)))
+
+        // ---------------- 参数 ----------------
+        root.addView(label("参数 · 调整后立刻生效", 14f, Color.parseColor("#c9d1c9")))
         for (p in ReactorState.PARAMS) {
             root.addView(slider(p))
         }
@@ -268,8 +231,62 @@ class MainActivity : Activity() {
         root.addView(button("恢复默认参数") { resetDefaults() })
         root.addView(spacer(dp(24)))
 
-        // ============ 5. 关于 ============
-        root.addView(sectionTitle("关于"))
+        // ============================================================
+        // 二、音频
+        // ============================================================
+        root.addView(sectionTitle("二、音频"))
+        projectionBtn = button("系统音频 · 精确（需一次录屏授权）") { requestProjection() }
+        root.addView(projectionBtn)
+        root.addView(button("停止采集") {
+            AudioCaptureService.stop(this)
+            ReactorState.audioSource = ReactorState.SOURCE_NONE
+            Toast.makeText(this, "已停止采集", Toast.LENGTH_SHORT).show()
+        })
+        root.addView(
+            hint(
+                "Android 把「采集本机播放的音频」绑在 MediaProjection 上，" +
+                        "所以会弹「录制或投射屏幕」授权框。\n" +
+                        "本应用只使用其中的音频通道：不读取画面、不录屏、不保存、不上传。\n" +
+                        "授权是会话级的：手机重启或进程被杀之后需要重新点一次授权。"
+            )
+        )
+        root.addView(button("允许后台运行（防被杀）") { requestBatteryExemption() })
+        root.addView(hint("三星会清理后台应用导致采集中断，加入白名单可显著减少。"))
+        root.addView(spacer(dp(20)))
+
+        // ============================================================
+        // 三、歌名
+        // ============================================================
+        root.addView(sectionTitle("三、歌名"))
+        notifBtn = button("打开通知使用权设置") { openNotificationAccess() }
+        root.addView(notifBtn)
+        root.addView(hint("在列表里找到「RBMK-1000」并打开。未授权只是不显示歌名，不影响其他功能。"))
+        root.addView(spacer(dp(20)))
+
+        // ============================================================
+        // 四、壁纸
+        // ============================================================
+        root.addView(sectionTitle("四、壁纸"))
+        root.addView(button("设为动态壁纸") { setLiveWallpaper() })
+        root.addView(button("选择背景图（可选）") { pickBackground() })
+        root.addView(button("清除背景图") {
+            prefs.edit().putString("background_uri", "").apply()
+            previewView?.reloadBackground()
+            Toast.makeText(this, "已清除，壁纸会变纯黑底", Toast.LENGTH_SHORT).show()
+        })
+        root.addView(button("还原为普通壁纸") { restoreStaticWallpaper() })
+        root.addView(
+            hint(
+                "动态壁纸会取代原来的静态壁纸。想换回去点「还原为普通壁纸」，" +
+                        "再挑一张图即可 —— 系统不会保存原来的壁纸，所以需要重新选。"
+            )
+        )
+        root.addView(spacer(dp(20)))
+
+        // ============================================================
+        // 五、关于
+        // ============================================================
+        root.addView(sectionTitle("五、关于"))
         root.addView(button("开源许可") {
             startActivity(Intent(this, LicensesActivity::class.java))
         })
