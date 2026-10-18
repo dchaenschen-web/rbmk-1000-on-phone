@@ -59,7 +59,7 @@ class RodArray {
     }
 
     /** 每帧推进一次高度（含 AGC 与时间平滑） */
-    fun step(bins: FloatArray, dtScale: Float) {
+    fun step(bins: FloatArray, dtScale: Float, timeMs: Long) {
         val floor = ReactorState.noiseFloor
         val gamma = ReactorState.gamma
         val gain = ReactorState.sensitivity
@@ -76,6 +76,17 @@ class RodArray {
         // 每帧只算一次的平滑系数
         val k = (1.0 - (0.45 + smoothing * 0.53).pow(dtScale.toDouble()))
             .toFloat().coerceIn(0.01f, 0.95f)
+
+        // 没有音频（静音，或采集已停止/失效）时用温和的待机波动，
+        // 否则画面完全静止，看起来像卡死。
+        if (peak < 0.05f) {
+            for (rod in rods) {
+                val wave = sin(rod.r * 0.55f - timeMs * 0.0009f + rod.x * 0.25f)
+                val target = baseH + (0.10f + 0.10f * wave) * maxH * 0.5f
+                rod.h += (target - rod.h) * k
+            }
+            return
+        }
 
         for (rod in rods) {
             val v = sample(rod, bins)

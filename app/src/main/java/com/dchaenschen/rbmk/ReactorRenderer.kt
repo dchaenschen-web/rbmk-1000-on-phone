@@ -43,7 +43,7 @@ class ReactorRenderer {
         lastFrameNanos = nowNanos
 
         val bins = ReactorState.spectrum
-        rods.step(bins, dt)
+        rods.step(bins, dt, nowNanos / 1_000_000L)
 
         canvas.drawColor(Color.TRANSPARENT)
 

@@ -105,6 +105,8 @@ class MainActivity : Activity() {
                         "本应用只使用其中的音频通道：不读取画面、不录屏、不保存、不上传。"
             )
         )
+        root.addView(button("允许后台运行（防被杀）") { requestBatteryExemption() })
+        root.addView(hint("三星会清理后台应用导致采集中断，加入白名单可显著减少。"))
         root.addView(spacer(dp(16)))
 
         // ============ 2. 歌名 ============
@@ -244,7 +246,9 @@ class MainActivity : Activity() {
         val parts = mutableListOf<String>()
         parts += if (AudioCaptureService.running) "音频采集：已开启" else "音频采集：未开启"
         parts += if (hasNotificationAccess()) "歌名读取：已授权" else "歌名读取：未授权"
-        statusText.text = parts.joinToString("    ")
+        val err = AudioCaptureService.lastError
+        statusText.text = parts.joinToString("    ") +
+                if (err.isBlank()) "" else "\n⚠ $err"
         projectionBtn.text =
             if (AudioCaptureService.running) "重新授权采集系统音频" else "授权采集系统音频"
         notifBtn.text =
@@ -351,6 +355,22 @@ class MainActivity : Activity() {
                 prefs.edit().putString("background_uri", uri.toString()).apply()
                 Toast.makeText(this, "背景图已设置，重新应用壁纸后生效", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    /** 申请忽略电池优化：三星会主动杀后台，导致音频采集中断 */
+    private fun requestBatteryExemption() {
+        try {
+            val pm = getSystemService(android.os.PowerManager::class.java)
+            if (pm?.isIgnoringBatteryOptimizations(packageName) == true) {
+                Toast.makeText(this, "已在电池优化白名单中", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val i = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                .setData(android.net.Uri.parse("package:$packageName"))
+            startActivity(i)
+        } catch (_: Exception) {
+            Toast.makeText(this, "请手动到 设置 → 电池 → 应用启动管理 里允许后台运行", Toast.LENGTH_LONG).show()
         }
     }
 
