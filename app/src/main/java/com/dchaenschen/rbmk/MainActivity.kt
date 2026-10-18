@@ -291,6 +291,12 @@ class MainActivity : Activity() {
             scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
             isFillViewport = true
         }
+        // 触摸参数区时禁止外层 ScrollView 抢事件，
+        // 保证这个区域能独立上下滑动（否则外层会先滚）。
+        paramScroll.setOnTouchListener { v, _ ->
+            v.parent?.requestDisallowInterceptTouchEvent(true)
+            false
+        }
         val paramBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         paramScroll.addView(
             paramBox,
