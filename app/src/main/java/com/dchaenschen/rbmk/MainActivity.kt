@@ -300,7 +300,9 @@ class MainActivity : Activity() {
     /** 打开系统静态壁纸选择器，用来把动态壁纸换回普通壁纸 */
     private fun restoreStaticWallpaper() {
         try {
-            startActivity(Intent(WallpaperManager.ACTION_CHANGE_WALLPAPER))
+            // 注意：WallpaperManager 没有 ACTION_CHANGE_WALLPAPER，
+            // 设置静态壁纸用的是系统 action：android.intent.action.SET_WALLPAPER
+            startActivity(Intent(Intent.ACTION_SET_WALLPAPER))
         } catch (_: Exception) {
             Toast.makeText(
                 this,
