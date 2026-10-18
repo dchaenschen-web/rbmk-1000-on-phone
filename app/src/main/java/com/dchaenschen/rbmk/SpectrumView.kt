@@ -60,7 +60,9 @@ class SpectrumView(context: Context) : View(context) {
     private val curveBottom = 0.90f      // 到 90% 结束
     private val labelY = 0.985f
 
-    private val dBMax = 24f              // 曲线显示 ±24dB
+    /** 曲线显示范围，每帧按实际增益自动计算，避免超出边界被切平 */
+    private var dbTop = 12f
+    private var dbBottom = -12f
 
     init {
         setBackgroundColor(Color.parseColor("#0e1210"))
@@ -122,7 +124,23 @@ class SpectrumView(context: Context) : View(context) {
         val top = h * curveTop
         val bottom = h * curveBottom
         val mid = (top + bottom) / 2f
-        val halfH = (bottom - top) / 2f
+        val span = (bottom - top).coerceAtLeast(1f)
+
+        // ---- 按曲线实际范围自动缩放 ----
+        // 之前固定映射到 ±24dB，频率倾斜调大后曲线顶到边界就被切平，
+        // 看起来像"到顶就不动了"。这里每帧统计实际增益范围并留出余量。
+        var lo = 0f
+        var hi = 0f
+        for (i in 0 until n) {
+            val v = SpectrumBands.gainDb[i]
+            if (v < lo) lo = v
+            if (v > hi) hi = v
+        }
+        val pad = 2f
+        val half = maxOf(hi, -lo).coerceAtLeast(4f) + pad
+        dbTop = half
+        dbBottom = -half
+        val dbRange = (dbTop - dbBottom).coerceAtLeast(1f)
 
         // 背景网格：0dB 中线
         canvas.drawLine(0f, mid, w, mid, zeroPaint)
@@ -134,8 +152,8 @@ class SpectrumView(context: Context) : View(context) {
         path.moveTo(0f, mid)
         for (i in 0 until n) {
             val x = (i + 0.5f) / n * w
-            val db = SpectrumBands.gainDb[i].coerceIn(-dBMax, dBMax)
-            val y = mid - db / dBMax * halfH
+            val db = SpectrumBands.gainDb[i].coerceIn(dbBottom, dbTop)
+            val y = mid - db / dbRange * span
             if (i == 0) {
                 path.moveTo(x, y)
             } else {
@@ -149,20 +167,20 @@ class SpectrumView(context: Context) : View(context) {
         fill.moveTo(0f, mid)
         for (i in 0 until n) {
             val x = (i + 0.5f) / n * w
-            val db = SpectrumBands.gainDb[i].coerceIn(-dBMax, dBMax)
-            val y = mid - db / dBMax * halfH
+            val db = SpectrumBands.gainDb[i].coerceIn(dbBottom, dbTop)
+            val y = mid - db / dbRange * span
             fill.lineTo(x, y)
         }
         fill.lineTo(w, mid)
         fill.close()
         canvas.drawPath(fill, curveFill)
 
-        // 标题与 dB 标注
-        canvas.drawText("增益曲线  ±${dBMax.toInt()}dB", dp(4f), top - dp(3f), titlePaint)
+        // 标题与 dB 标注（显示真实范围）
+        canvas.drawText("增益曲线  自动范围", dp(4f), top - dp(3f), titlePaint)
         labelPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("+24", w - dp(3f), top + dp(8f), labelPaint)
+        canvas.drawText("+${dbTop.toInt()}", w - dp(3f), top + dp(8f), labelPaint)
         canvas.drawText("0", w - dp(3f), mid + dp(3f), labelPaint)
-        canvas.drawText("-24", w - dp(3f), bottom - dp(2f), labelPaint)
+        canvas.drawText("${dbBottom.toInt()}", w - dp(3f), bottom - dp(2f), labelPaint)
         labelPaint.textAlign = Paint.Align.CENTER
     }
 
