@@ -257,7 +257,6 @@ class MainActivity : Activity() {
                 root.addView(spacer(dp(24)))
 
                 }
-
                 // ---------------- 频谱 ----------------
                 root.addView(
                     label(
@@ -714,7 +713,6 @@ class MainActivity : Activity() {
                 }
                 root.addView(spacer(dp(14)))
 
-                }
 
                 SCREEN_SYSTEM -> {
                 // ============================================================
