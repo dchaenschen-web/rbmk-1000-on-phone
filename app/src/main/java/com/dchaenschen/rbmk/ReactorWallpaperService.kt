@@ -72,7 +72,17 @@ class ReactorWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(isVisible: Boolean) {
             visible = isVisible
-            if (isVisible) startLoop() else stopLoop()
+            if (isVisible) {
+                // 从「不可见」恢复时重新载入设置，
+                // 保证在设置页里改过的配色/参数立刻反映到壁纸
+                try {
+                    ReactorConfig.load(this@ReactorWallpaperService)
+                } catch (_: Exception) {
+                }
+                startLoop()
+            } else {
+                stopLoop()
+            }
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder?) {

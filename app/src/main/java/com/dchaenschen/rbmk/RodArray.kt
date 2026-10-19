@@ -7,6 +7,7 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 /**
  * 控制棒阵列的几何与动画状态。
@@ -32,6 +33,9 @@ class RodArray {
 
         /** 分组编号（0..5），由 RodGroups 计算 */
         var group: Int = 0
+
+        /** 失控模式用的「活跃度」：0 = 平静，>1 = 异常尖峰 */
+        var act: Float = 0f
     }
 
     /** AGC 峰值包络（快升慢降） */
@@ -160,17 +164,51 @@ class RodArray {
             }
 
             ReactorState.IDLE_CHAOS -> {
-                // 全局潮汐 + 偶发爆发，模拟反应堆失控的节奏
-                val tide = (sin(t * 0.73f) * 0.5f + 0.5f).toFloat()
+                // ============================================================
+                // 失控模式（高斯版）
+                // ============================================================
+                // 旧版的每根棒振幅权重几乎一样（只有相位差），所以整场高度
+                // 看起来是"齐平的"。这里用高斯权重让中心更容易躁动：
+                //   g = exp(-r² / (2σ²))   中心 ≈ 1，边缘（σ=6, r=15）≈ 0.04
+                // 另外叠加低概率的「异常尖峰」，只有个别棒会突然窜满。
+                val sigma = ReactorState.chaosSigma.coerceIn(1.5f, 20f)
+                val sigma2 = 2f * sigma * sigma
+                val spikeRate = ReactorState.chaosSpike.coerceIn(0f, 3f)
+
+                // 全局爆发：约 20 秒一次的整体躁动，保留原来的节奏感
                 val burst = (sin(t * 0.31f + 1.3f) * 0.5f + 0.5f).toFloat().pow(7f)
+
                 for (rod in rods) {
-                    // 每根棒独立的无规律抖动
-                    val n = (
-                            sin(t * (2.1f + rod.seed * 6.3f) + rod.x * 0.9f + rod.z * 0.5f)
-                                    * 0.5f + 0.5f
-                            ).toFloat()
-                    val v = (n * 0.55f + tide * 0.22f + burst * 0.5f).coerceIn(0f, 1f)
-                    val target = baseH + v * maxH * (0.30f + burst * 0.75f)
+                    // 1) 高斯空间权重
+                    val g = kotlin.math.exp(-(rod.r * rod.r) / sigma2)
+
+                    // 2) 活跃度随机游走（低通随机 → 不会逐帧乱闪）
+                    val noise = Random.nextFloat()
+                    rod.act = (
+                            rod.act * 0.97f +
+                                    noise * 0.03f * (0.15f + g)
+                            ).coerceIn(0f, 1f)
+
+                    // 3) 异常尖峰：概率与 g 成正比，命中时这根棒瞬间拉满
+                    if (spikeRate > 0f &&
+                        Random.nextFloat() < 0.0012f * spikeRate * (0.1f + g)
+                    ) {
+                        rod.act = 1.8f
+                    }
+                    // 自然衰减
+                    rod.act *= 0.985f
+
+                    // 4) 柔和底噪波浪（保留一点平滑运动，避免纯噪声）
+                    val wave = sin(
+                        t * (1.5f + rod.seed * 3.0f) + rod.x * 0.7f + rod.z * 0.5f
+                    ) * 0.5f + 0.5f
+
+                    val v = (
+                            g * (wave * 0.35f + rod.act * 0.9f) +
+                                    burst * 0.25f * g
+                            ).coerceIn(0f, 1f)
+
+                    val target = baseH + v * maxH * (0.5f + burst * 0.6f)
                     // 响应更快，显得更急躁
                     rod.h += (target - rod.h) * (k * 2.2f).coerceAtMost(0.55f)
                 }

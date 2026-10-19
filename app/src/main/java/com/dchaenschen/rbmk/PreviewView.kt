@@ -50,6 +50,17 @@ class PreviewView(context: Context) : View(context) {
     /** 是否参与位置/大小编辑；false 时只演示动画 */
     var geometryEditing: Boolean = true
 
+    /** 是否绘制背景图；运动预览设为 false（只画控制棒） */
+    var showBackground: Boolean = true
+        set(value) {
+            field = value
+            setBackgroundColor(if (value) Color.BLACK else Color.TRANSPARENT)
+            invalidate()
+        }
+
+    /** 大于 0 时覆盖 zoom（用于运动预览把阵列放到最大） */
+    var zoomOverride: Float = 0f
+
     /**
      * 目标屏幕宽高比（height / width）。
      *
@@ -114,23 +125,27 @@ class PreviewView(context: Context) : View(context) {
         if (width == 0 || height == 0) return
 
         // 背景图（与壁纸相同的 fitCenter 逻辑）
-        val bg = background
-        if (bg != null && !bg.isRecycled) {
-            val dst = fitCenter(bg.width, bg.height, width, height)
-            canvas.drawBitmap(bg, null, dst, bgPaint)
-        } else {
-            canvas.drawColor(Color.BLACK)
-            // 每 2 秒兜底重读一次，避免选图后预览还是黑的
-            val now = System.currentTimeMillis()
-            if (now - lastLoadMs > 2000) {
-                lastLoadMs = now
-                reloadBackground()
+        // 运动预览不需要背景，只画控制棒本身
+        if (showBackground) {
+            val bg = background
+            if (bg != null && !bg.isRecycled) {
+                val dst = fitCenter(bg.width, bg.height, width, height)
+                canvas.drawBitmap(bg, null, dst, bgPaint)
+            } else {
+                canvas.drawColor(Color.BLACK)
+                // 每 2 秒兜底重读一次，避免选图后预览还是黑的
+                val now = System.currentTimeMillis()
+                if (now - lastLoadMs > 2000) {
+                    lastLoadMs = now
+                    reloadBackground()
+                }
             }
         }
 
         renderer.draw(
             canvas, width.toFloat(), height.toFloat(), System.nanoTime(),
-            useGeometry = geometryEditing
+            useGeometry = geometryEditing,
+            zoomOverride = zoomOverride
         )
         // 持续重绘（预览也是动画）
         postInvalidateOnAnimation()

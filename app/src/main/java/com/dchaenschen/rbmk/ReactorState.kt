@@ -124,6 +124,14 @@ object ReactorState {
     @Volatile
     var forceIdle: Boolean = false
 
+    /** 失控模式：高斯半径（越小，只有中心躁动） */
+    @Volatile
+    var chaosSigma: Float = 6f
+
+    /** 失控模式：异常尖峰频率（0 = 不出现尖峰） */
+    @Volatile
+    var chaosSpike: Float = 1f
+
     // ================================================================
     // 配色（分组 0..5 + 通用部件）
     // ================================================================
@@ -272,6 +280,10 @@ object ReactorState {
         Param("ring_size", "环宽", 1f, 8f, 3f, digits = 1, hint = "同心环分组时每组占多少格"),
         Param("sector_count", "扇区数", 2f, 12f, 6f, digits = 0, hint = "扇形分组时分成几个扇区"),
         Param("accent_ratio", "随机点缀比例", 0f, 0.8f, 0.15f, hint = "随机分组时非主色棒的比例"),
+        Param("chaos_sigma", "失控·高斯半径", 1.5f, 20f, 6f, digits = 1,
+            hint = "越小越只有中心躁动，越大越均匀"),
+        Param("chaos_spike", "失控·尖峰频率", 0f, 3f, 1f, digits = 2,
+            hint = "异常尖峰的出现频率，0 = 关闭"),
     )
 
     fun apply(key: String, value: Float) {
@@ -294,6 +306,8 @@ object ReactorState {
             "ring_size" -> ringSize = value
             "sector_count" -> sectorCount = value.toInt().coerceIn(2, 12)
             "accent_ratio" -> accentRatio = value
+            "chaos_sigma" -> chaosSigma = value
+            "chaos_spike" -> chaosSpike = value
         }
     }
 
@@ -316,6 +330,8 @@ object ReactorState {
         "ring_size" -> ringSize
         "sector_count" -> sectorCount.toFloat()
         "accent_ratio" -> accentRatio
+        "chaos_sigma" -> chaosSigma
+        "chaos_spike" -> chaosSpike
         else -> 0f
     }
 

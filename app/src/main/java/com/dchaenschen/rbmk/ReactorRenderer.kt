@@ -47,6 +47,7 @@ class ReactorRenderer {
         height: Float,
         nowNanos: Long,
         useGeometry: Boolean = true,
+        zoomOverride: Float = 0f,
     ) {
         val dt = if (lastFrameNanos == 0L) 1f else
             ((nowNanos - lastFrameNanos) / 16_666_667f).coerceIn(0.2f, 3f)
@@ -60,7 +61,11 @@ class ReactorRenderer {
 
         val angle = Math.toRadians(ReactorState.angleDeg.toDouble()).toFloat()
         val tilt = ReactorState.tilt
-        val zoom = if (useGeometry) ReactorState.zoom else 1f
+        val zoom = when {
+            zoomOverride > 0f -> zoomOverride
+            useGeometry -> ReactorState.zoom
+            else -> 1f
+        }
 
         // 阵列整体平移放到画布变换里，这样歌名浮层不受影响
         canvas.save()
