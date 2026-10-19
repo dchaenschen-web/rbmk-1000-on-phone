@@ -174,6 +174,8 @@ class RodArray {
                 val sigma = ReactorState.chaosSigma.coerceIn(1.5f, 20f)
                 val sigma2 = 2f * sigma * sigma
                 val spikeRate = ReactorState.chaosSpike.coerceIn(0f, 3f)
+                // 尖峰出现的半径位置：概率按到该半径的距离做高斯衰减（σ=3）
+                val spikePos = ReactorState.chaosSpikePos.coerceIn(0f, 15f)
 
                 // 全局爆发：约 20 秒一次的整体躁动，保留原来的节奏感
                 val burst = (sin(t * 0.31f + 1.3f) * 0.5f + 0.5f).toFloat().pow(7f)
@@ -190,8 +192,10 @@ class RodArray {
                             ).coerceIn(0f, 1f)
 
                     // 3) 异常尖峰：概率与 g 成正比，命中时这根棒瞬间拉满
+                    val dr = rod.r - spikePos
+                    val spikeW = kotlin.math.exp(-(dr * dr) / 18f)
                     if (spikeRate > 0f &&
-                        Random.nextFloat() < 0.0012f * spikeRate * (0.1f + g)
+                        Random.nextFloat() < 0.0012f * spikeRate * (0.05f + spikeW)
                     ) {
                         rod.act = 1.8f
                     }

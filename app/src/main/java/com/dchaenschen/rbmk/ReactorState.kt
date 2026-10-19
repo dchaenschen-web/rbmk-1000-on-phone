@@ -132,6 +132,10 @@ object ReactorState {
     @Volatile
     var chaosSpike: Float = 1f
 
+    /** 失控模式：异常尖峰出现的半径位置（0 = 中心，15 = 最外圈） */
+    @Volatile
+    var chaosSpikePos: Float = 0f
+
     // ================================================================
     // 配色（分组 0..5 + 通用部件）
     // ================================================================
@@ -284,6 +288,8 @@ object ReactorState {
             hint = "越小越只有中心躁动，越大越均匀"),
         Param("chaos_spike", "失控·尖峰频率", 0f, 3f, 1f, digits = 2,
             hint = "异常尖峰的出现频率，0 = 关闭"),
+        Param("chaos_spike_pos", "失控·尖峰位置", 0f, 15f, 0f, digits = 1,
+            hint = "尖峰集中在哪个半径：0 = 中心，15 = 最外圈"),
     )
 
     fun apply(key: String, value: Float) {
@@ -307,7 +313,9 @@ object ReactorState {
             "sector_count" -> sectorCount = value.toInt().coerceIn(2, 12)
             "accent_ratio" -> accentRatio = value
             "chaos_sigma" -> chaosSigma = value
-            "chaos_spike" -> chaosSpike = value
+            "chaos_spike" -> chaosSpike
+        "chaos_spike_pos" -> chaosSpikePos = value
+            "chaos_spike_pos" -> chaosSpikePos = value
         }
     }
 
