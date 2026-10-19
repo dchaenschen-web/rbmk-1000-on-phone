@@ -307,21 +307,32 @@ class AudioCaptureService : Service() {
             for (b in 0 until binCount) {
                 val lo = SpectrumBands.lo[b]
                 val hi = SpectrumBands.hi[b].coerceAtLeast(lo + 1)
-                var sum = 0f
-                for (k in lo until hi.coerceAtMost(mag.size)) sum += mag[k]
-                val avg = sum / (hi - lo).coerceAtLeast(1)
 
-                // 1) dB 化 + 频率倾斜补偿（+3dB/oct，以 1kHz 为基准）
-                val db = 20.0 * log10(avg + 1e-9) + 20.0 * log10(SpectrumBands.gain[b].toDouble())
+                // 取频段内**峰值**，而不是平均。
+                // PC 端取的是单个 FFT bin；对数频段里取平均会把宽频段的峰值
+                // 抹平（高频一个 band 覆盖几十个 bin），律动感就消失了。
+                var peakMag = 0f
+                for (k in lo until hi.coerceAtMost(mag.size)) {
+                    if (mag[k] > peakMag) peakMag = mag[k]
+                }
 
-                // 2) 粗归一化到 0..1（宽区间，保留动态范围）
-                val raw = ((db + 100.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
+                // 归一化到「满幅正弦 ≈ 1.0」：
+                // 汉宁窗下满幅正弦的 FFT 峰值约为 fftSize/4。
+                // 之前直接用绝对幅度当 dB，音乐信号普遍 40~70dB，
+                // 全部超过映射上限被拍平成 1.0 —— 这就是所有棒子一起顶满的原因。
+                val norm = peakMag * 4f / fftSize
 
-                // 3) 每频段自适应地板（谱减稳态成分）
+                // dBFS -> 0..1，窗口取 -100..-30dB，
+                // 与 Web Audio AnalyserNode 的默认 min/maxDecibels 一致。
+                val db = 20.0 * log10(norm + 1e-9) +
+                        20.0 * log10(SpectrumBands.gain[b].toDouble())
+                val raw = ((db + 100.0) / 70.0).coerceIn(0.0, 1.0).toFloat()
+
+                // 每频段自适应地板：压掉稳态成分（底鼓/贝斯的持续能量）
                 if (raw < bandFloor[b]) {
                     bandFloor[b] = bandFloor[b] * 0.55f + raw * 0.45f
                 } else {
-                    bandFloor[b] = (bandFloor[b] + 0.0022f).coerceAtMost(0.85f)
+                    bandFloor[b] = (bandFloor[b] + 0.0018f).coerceAtMost(0.80f)
                 }
                 val denom = (1f - bandFloor[b]).coerceAtLeast(0.15f)
                 out[b] = ((raw - bandFloor[b]) / denom).coerceIn(0f, 1f)
