@@ -78,7 +78,7 @@ object ReactorState {
     var smoothing: Float = 0.75f
 
     @Volatile
-    var noiseFloor: Float = 0.10f
+    var noiseFloor: Float = 0.05f
 
     @Volatile
     var gamma: Float = 1.7f
@@ -254,7 +254,7 @@ object ReactorState {
     val PARAMS: List<Param> = listOf(
         Param("sensitivity", "灵敏度", 0.3f, 3f, 1.4f, hint = "整体放大倍数"),
         Param("smoothing", "平滑度", 0f, 0.95f, 0.75f, hint = "越大越柔和、越迟钝"),
-        Param("noise_floor", "噪声门限", 0f, 0.6f, 0.10f, hint = "低于此值当静音，调大可压掉底噪"),
+        Param("noise_floor", "噪声门限", 0f, 0.6f, 0.05f, hint = "低于此值当静音，调大可压掉底噪"),
         Param("gamma", "响应曲线 γ", 0.5f, 3f, 1.7f, hint = "越大越强调强频段，节律更明显"),
         Param("max_height", "最大高度", 1f, 8f, 4.8f, hint = "控制棒最高能升多高"),
         Param("base_height", "基础高度", 0f, 0.4f, 0.07f, hint = "静音时控制棒的高度"),
